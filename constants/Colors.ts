@@ -1,19 +1,37 @@
-const tintColorLight = '#2f95dc';
-const tintColorDark = '#fff';
+const primary = '#6D28D9'; // Vibrant Indigo
+const secondary = '#FBBF24'; // Joyful Yellow
+const accent = '#0EA5E9'; // Calm Teal
+const playful = '#EC4899'; // Playful Pink
 
 export default {
   light: {
-    text: '#000',
-    background: '#fff',
-    tint: tintColorLight,
-    tabIconDefault: '#ccc',
-    tabIconSelected: tintColorLight,
+    text: '#1F2937',
+    background: '#F9FAFB',
+    tint: primary,
+    tabIconDefault: '#9CA3AF',
+    tabIconSelected: primary,
+    primary,
+    secondary,
+    accent,
+    playful,
+    card: '#FFFFFF',
+    border: '#E5E7EB',
+    error: '#EF4444',
+    success: '#10B981',
   },
   dark: {
-    text: '#fff',
-    background: '#000',
-    tint: tintColorDark,
-    tabIconDefault: '#ccc',
-    tabIconSelected: tintColorDark,
+    text: '#F9FAFB',
+    background: '#111827',
+    tint: playful,
+    tabIconDefault: '#4B5563',
+    tabIconSelected: playful,
+    primary,
+    secondary,
+    accent,
+    playful,
+    card: '#1F2937',
+    border: '#374151',
+    error: '#F87171',
+    success: '#34D399',
   },
 };

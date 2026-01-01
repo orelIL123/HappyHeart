@@ -1,0 +1,43 @@
+{
+    "cli": {
+        "version": ">= 13.2.0"
+    },
+    "build": {
+        "development": {
+            "developmentClient": true,
+            "distribution": "internal",
+            "android": {
+                "gradleCommand": ":app:assembleDebug",
+                "buildType": "apk"
+            },
+            "channel": "development"
+        },
+        "preview": {
+            "distribution": "internal",
+            "android": {
+                "buildType": "apk"
+            },
+            "channel": "preview"
+        },
+        "production": {
+            "android": {
+                "buildType": "aab"
+            },
+            "channel": "production"
+        }
+    },
+    "submit": {
+        "production": {}
+    },
+    "update": {
+        "development": {
+            "channel": "development"
+        },
+        "preview": {
+            "channel": "preview"
+        },
+        "production": {
+            "channel": "production"
+        }
+    }
+}
