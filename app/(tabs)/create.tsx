@@ -4,7 +4,7 @@ import Colors from '@/constants/Colors';
 import { CITIES, INSTITUTIONS } from '@/constants/MockData';
 import { useApp } from '@/context/AppContext';
 import { useRouter } from 'expo-router';
-import { ShieldAlert } from 'lucide-react-native';
+import { ShieldAlert, Trash2 } from 'lucide-react-native';
 import React, { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
@@ -35,12 +35,21 @@ export default function CreateActivityScreen() {
         contactPhone: '',
         intensity: 'medium' as 'low' | 'medium' | 'high',
         isUrgent: false,
+        autoDelete: true,
     });
 
     const handleCreate = () => {
         if (!form.title || !form.description || !form.contactPerson || !form.contactPhone) {
             Alert.alert('שגיאה', 'אנא מלא את כל שדות החובה');
             return;
+        }
+
+        // Calculate expiration date (24 hours after end time) if auto-delete is enabled
+        let expirationDate = undefined;
+        if (form.autoDelete) {
+            const endDateTime = new Date(`${form.date}T${form.endTime}:00Z`);
+            endDateTime.setDate(endDateTime.getDate() + 1); // Add 1 day
+            expirationDate = endDateTime.toISOString();
         }
 
         createActivity({
@@ -57,6 +66,7 @@ export default function CreateActivityScreen() {
             contactPhone: form.contactPhone,
             intensity: form.intensity,
             isUrgent: form.isUrgent,
+            expirationDate,
         });
 
         Alert.alert('הצלחה', 'הפעילות נוצרה בהצלחה!');
@@ -168,6 +178,26 @@ export default function CreateActivityScreen() {
                                 </Text>
                             </View>
                         )}
+                    </View>
+
+                    <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                        <View style={styles.urgentRow}>
+                            <Switch
+                                value={form.autoDelete}
+                                onValueChange={(v) => setForm({ ...form, autoDelete: v })}
+                                trackColor={{ false: colors.border, true: colors.primary }}
+                                thumbColor="#fff"
+                            />
+                            <View style={styles.urgentRowRight}>
+                                <View style={[styles.iconContainer, { backgroundColor: colors.primary + '15' }]}>
+                                    <Trash2 size={20} color={colors.primary} />
+                                </View>
+                                <View>
+                                    <Text style={[styles.rowTitle, { color: colors.text }]}>מחיקה אוטומטית</Text>
+                                    <Text style={[styles.rowSubtitle, { color: colors.tabIconDefault }]}>הסר פעילות זו מהלוח 24 שעות אחרי סיומה</Text>
+                                </View>
+                            </View>
+                        </View>
                     </View>
 
                     <Text style={[styles.label, { color: colors.text }]}>מיקום (עיר)</Text>

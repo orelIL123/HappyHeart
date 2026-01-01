@@ -29,6 +29,7 @@ export interface Activity {
     department?: string;    // Keep for backward compatibility
     intensity?: 'low' | 'medium' | 'high';
     isUrgent?: boolean;
+    expirationDate?: string;
 }
 
 export const MOCK_USERS: User[] = [

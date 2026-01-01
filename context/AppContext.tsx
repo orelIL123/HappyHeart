@@ -115,6 +115,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return () => unsubscribe();
     }, []);
 
+    // Auto-cleanup for admin/organizers
+    useEffect(() => {
+        const runCleanup = async () => {
+            if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'organizer')) {
+                await firebaseService.deleteExpiredActivities();
+            }
+        };
+        runCleanup();
+    }, [currentUser]);
+
     useEffect(() => {
         if (notificationPreferences.enabled && isAuthenticated) {
             registerForNotifications();

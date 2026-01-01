@@ -6,11 +6,14 @@ import {
     deleteDoc,
     doc,
     getDoc,
+    getDocs,
     onSnapshot,
     orderBy,
     query,
     setDoc,
-    updateDoc
+    updateDoc,
+    where,
+    writeBatch
 } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { db, storage } from '../config/firebaseConfig';
@@ -56,6 +59,29 @@ export const firebaseService = {
         return await updateDoc(activityRef, {
             participants: arrayRemove(userId)
         });
+    },
+
+    deleteExpiredActivities: async () => {
+        try {
+            const now = new Date().toISOString();
+            const q = query(
+                collection(db, 'activities'),
+                where('expirationDate', '<', now)
+            );
+
+            const snapshot = await getDocs(q);
+            if (snapshot.empty) return;
+
+            const batch = writeBatch(db);
+            snapshot.docs.forEach((doc) => {
+                batch.delete(doc.ref);
+            });
+
+            await batch.commit();
+            console.log(`Cleanup: Deleted ${snapshot.size} expired activities.`);
+        } catch (error) {
+            console.error('Error deleting expired activities:', error);
+        }
     },
 
     // Users
