@@ -2,7 +2,9 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import * as Updates from 'expo-updates';
+import { useEffect, useState } from 'react';
+import { Alert, Platform } from 'react-native';
 import 'react-native-reanimated';
 
 import { NotificationCenter } from '@/components/NotificationCenter';
@@ -46,6 +48,7 @@ function RootLayoutNav({ loaded }: { loaded: boolean }) {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const theme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
+  const [updateChecked, setUpdateChecked] = useState(false);
 
   // Prevent the splash screen from auto-hiding before asset loading and session load are complete.
   useEffect(() => {
@@ -54,14 +57,91 @@ function RootLayoutNav({ loaded }: { loaded: boolean }) {
     }
   }, [loaded, isLoadingSession]);
 
+  // Fallback: Hide splash screen after max 6 seconds to prevent infinite loading
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      console.log('AppContext: Force hiding splash screen after timeout');
+      SplashScreen.hideAsync();
+    }, 6000);
+
+    return () => clearTimeout(timeout);
+  }, []);
+
+  // Check for updates - Aggressive polling for fast updates
+  useEffect(() => {
+    async function checkForUpdates() {
+      if (__DEV__ || !Updates.isEnabled) {
+        console.log('Updates: Skipping check in dev mode or updates not enabled');
+        setUpdateChecked(true);
+        return;
+      }
+
+      try {
+        console.log('Updates: Checking for updates...');
+        const update = await Updates.checkForUpdateAsync();
+
+        if (update.isAvailable) {
+          console.log('Updates: Update available! Auto-downloading...');
+          try {
+            await Updates.fetchUpdateAsync();
+            console.log('Updates: Update downloaded! Reloading app...');
+            // Automatically reload without asking on Android for faster updates
+            if (Platform.OS === 'android') {
+              setTimeout(() => {
+                Updates.reloadAsync();
+              }, 500);
+            } else {
+              Alert.alert(
+                'עדכון הותקן!',
+                'האפליקציה תתחיל מחדש כדי להחיל את העדכון.',
+                [
+                  {
+                    text: 'אישור',
+                    onPress: () => {
+                      Updates.reloadAsync();
+                    },
+                  },
+                ]
+              );
+            }
+          } catch (error) {
+            console.error('Updates: Error fetching update:', error);
+            setUpdateChecked(true);
+          }
+        } else {
+          console.log('Updates: No update available');
+          setUpdateChecked(true);
+        }
+      } catch (error) {
+        console.error('Updates: Error checking for updates:', error);
+        setUpdateChecked(true);
+      }
+    }
+
+    if (loaded && !isLoadingSession) {
+      // Check immediately on load
+      checkForUpdates();
+
+      // Also check every 30 seconds for new updates (aggressive polling)
+      const interval = setInterval(() => {
+        checkForUpdates();
+      }, 30000);
+
+      return () => clearInterval(interval);
+    }
+  }, [loaded, isLoadingSession]);
+
   // Handle navigation based on auth state
   useEffect(() => {
-    if (isLoadingSession || !loaded) return;
+    if (isLoadingSession || !loaded) {
+      console.log('Navigation Effect - Waiting for load:', { isLoadingSession, loaded });
+      return;
+    }
 
     const inAuthGroup = segments[0] === '(auth)';
     const shouldShowAuth = !isAuthenticated && !isGuest;
 
-    console.log('Navigation Effect - shouldShowAuth:', shouldShowAuth, 'inAuthGroup:', inAuthGroup, 'currentUser:', currentUser?.name);
+    console.log('Navigation Effect - shouldShowAuth:', shouldShowAuth, 'inAuthGroup:', inAuthGroup, 'currentUser:', currentUser?.name, 'isAuthenticated:', isAuthenticated, 'isGuest:', isGuest);
 
     if (shouldShowAuth && !inAuthGroup) {
       console.log('Navigating to auth...');
@@ -70,7 +150,7 @@ function RootLayoutNav({ loaded }: { loaded: boolean }) {
       console.log('Navigating to tabs...');
       router.replace('/(tabs)');
     }
-  }, [isAuthenticated, isGuest, isLoadingSession, loaded, segments]);
+  }, [isAuthenticated, isGuest, isLoadingSession, loaded, segments, currentUser, router]);
 
   if (!loaded || isLoadingSession) {
     return null;

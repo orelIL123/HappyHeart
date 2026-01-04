@@ -1,6 +1,7 @@
+import { Platform } from 'react-native';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { getApps, initializeApp } from 'firebase/app';
-import { getReactNativePersistence, initializeAuth } from 'firebase/auth';
+import { getAuth, getReactNativePersistence, initializeAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
@@ -23,7 +24,27 @@ if (getApps().length === 0) {
 }
 
 export const db = getFirestore(app);
-export const auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(ReactNativeAsyncStorage)
-});
+
+// Initialize auth with platform-specific persistence
+let auth;
+try {
+    // For native platforms (iOS/Android), use React Native persistence
+    if (Platform.OS !== 'web') {
+        auth = initializeAuth(app, {
+            persistence: getReactNativePersistence(ReactNativeAsyncStorage)
+        });
+    } else {
+        // For web, use default browser persistence
+        auth = getAuth(app);
+    }
+} catch (error: any) {
+    // If auth is already initialized, just get it
+    if (error.code === 'auth/already-initialized') {
+        auth = getAuth(app);
+    } else {
+        throw error;
+    }
+}
+
+export { auth };
 export const storage = getStorage(app);

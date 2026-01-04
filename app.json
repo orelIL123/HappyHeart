@@ -14,7 +14,12 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.Happyhart.app",
+      "googleServicesFile": "./GoogleService-Info-14.plist",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.happyhart.app",
@@ -41,7 +46,10 @@
     },
     "updates": {
       "url": "https://u.expo.dev/eeb4b519-a71e-4542-ba20-6b33c3e1600f",
-      "fallbackToCacheTimeout": 0
+      "fallbackToCacheTimeout": 0,
+      "checkAutomatically": "ON_LOAD",
+      "requestHeaders": {},
+      "enabled": true
     },
     "runtimeVersion": {
       "policy": "appVersion"

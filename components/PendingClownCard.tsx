@@ -1,6 +1,7 @@
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { Check, FileText, MapPin, Phone, X } from 'lucide-react-native';
+import { createShadow, androidTextFix, preventFontScaling, androidButtonFix } from '@/constants/AndroidStyles';
+import { Check, FileText, MapPin, Phone, X, MessageCircle } from 'lucide-react-native';
 import React from 'react';
 import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { User } from '../constants/MockData';
@@ -21,6 +22,26 @@ export const PendingClownCard: React.FC<PendingClownCardProps> = ({ clown, onApp
         }
     };
 
+    const handleWhatsApp = () => {
+        if (!clown.phone) return;
+        const cleanPhone = clown.phone.replace(/[^\d]/g, '');
+        // Remove leading 0 if exists and add country code (972 for Israel)
+        const phoneNumber = cleanPhone.startsWith('0') ? '972' + cleanPhone.substring(1) : cleanPhone;
+        const url = `whatsapp://send?phone=${phoneNumber}`;
+        
+        Linking.canOpenURL(url).then((supported: boolean) => {
+            if (supported) {
+                Linking.openURL(url);
+            } else {
+                // Fallback to web WhatsApp
+                Linking.openURL(`https://wa.me/${phoneNumber}`);
+            }
+        }).catch(() => {
+            // Fallback to web WhatsApp
+            Linking.openURL(`https://wa.me/${phoneNumber}`);
+        });
+    };
+
     return (
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.header}>
@@ -34,10 +55,20 @@ export const PendingClownCard: React.FC<PendingClownCardProps> = ({ clown, onApp
                 <Image source={{ uri: clown.avatar || 'https://i.pravatar.cc/150?u=' + clown.name }} style={styles.avatar} />
             </View>
 
-            <TouchableOpacity style={[styles.phoneContainer, { backgroundColor: colors.primary + '10' }]} onPress={handleCall}>
-                <Phone size={18} color={colors.primary} />
-                <Text style={[styles.phoneNumber, { color: colors.primary }]}>{clown.phone || 'אין מספר טלפון'}</Text>
-            </TouchableOpacity>
+            <View style={styles.contactRow}>
+                <TouchableOpacity style={[styles.phoneContainer, { backgroundColor: colors.primary + '10' }]} onPress={handleCall}>
+                    <Phone size={18} color={colors.primary} />
+                    <Text style={[styles.phoneNumber, { color: colors.primary }]}>{clown.phone || 'אין מספר טלפון'}</Text>
+                </TouchableOpacity>
+                {clown.phone && (
+                    <TouchableOpacity 
+                        style={[styles.whatsappButton, { backgroundColor: '#25D366' }]} 
+                        onPress={handleWhatsApp}
+                    >
+                        <MessageCircle size={18} color="#fff" />
+                    </TouchableOpacity>
+                )}
+            </View>
 
             {clown.certificationUrl && (
                 <TouchableOpacity
@@ -76,11 +107,7 @@ const styles = StyleSheet.create({
         padding: 16,
         marginBottom: 16,
         borderWidth: 1,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
+        ...createShadow(3),
     },
     header: {
         flexDirection: 'row-reverse',
@@ -96,6 +123,8 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: 'bold',
         marginBottom: 4,
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     locationContainer: {
         flexDirection: 'row-reverse',
@@ -104,6 +133,8 @@ const styles = StyleSheet.create({
     location: {
         fontSize: 14,
         marginRight: 4,
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     avatar: {
         width: 50,
@@ -111,17 +142,32 @@ const styles = StyleSheet.create({
         borderRadius: 25,
         marginLeft: 12,
     },
+    contactRow: {
+        flexDirection: 'row-reverse',
+        alignItems: 'center',
+        marginBottom: 12,
+        gap: 10,
+    },
     phoneContainer: {
         flexDirection: 'row-reverse',
         alignItems: 'center',
         padding: 10,
         borderRadius: 12,
-        marginBottom: 12,
+        flex: 1,
+    },
+    whatsappButton: {
+        width: 45,
+        height: 45,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     phoneNumber: {
         fontSize: 16,
         fontWeight: '600',
         marginRight: 10,
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     certButton: {
         flexDirection: 'row-reverse',
@@ -137,6 +183,8 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: 'bold',
         marginRight: 8,
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     actions: {
         flexDirection: 'row-reverse',
@@ -149,6 +197,7 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
+        ...androidButtonFix,
     },
     approveButton: {
         // Light green background set in inline style
@@ -160,5 +209,7 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: 'bold',
         marginRight: 6,
+        ...androidTextFix,
+        ...preventFontScaling,
     },
 });

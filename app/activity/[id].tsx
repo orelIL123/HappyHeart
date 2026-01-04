@@ -1,13 +1,15 @@
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { MOCK_USERS, User } from '@/constants/MockData';
+import { createShadow, androidTextFix, preventFontScaling, androidButtonFix, androidBottomSafeArea } from '@/constants/AndroidStyles';
+import { User } from '@/constants/MockData';
 import { useApp } from '@/context/AppContext';
+import { firebaseService } from '@/services/firebaseService';
 import { format } from 'date-fns';
 import { he } from 'date-fns/locale';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { AlertTriangle, Building, Calendar as CalendarIcon, Clock, MapPin, Phone as PhoneIcon, Share2, MessageCircle as WhatsAppIcon } from 'lucide-react-native';
-import React from 'react';
-import { Alert, Image, Linking, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, Image, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function ActivityDetailsScreen() {
     const { id } = useLocalSearchParams();
@@ -17,8 +19,18 @@ export default function ActivityDetailsScreen() {
     const router = useRouter();
 
     const [selectedParticipant, setSelectedParticipant] = React.useState<User | null>(null);
+    const [participantsData, setParticipantsData] = useState<User[]>([]);
 
     const activity = activities.find(a => a.id === id);
+    
+    useEffect(() => {
+        if (activity && activity.participants.length > 0) {
+            firebaseService.getUsersByIds(activity.participants).then(setParticipantsData);
+        } else {
+            setParticipantsData([]);
+        }
+    }, [activity?.participants]);
+
     if (!activity) return null;
 
     const isJoined = currentUser ? activity.participants.includes(currentUser.id) : false;
@@ -27,8 +39,6 @@ export default function ActivityDetailsScreen() {
     const startTime = new Date(activity.startTime);
     const dateStr = format(startTime, 'EEEE, d בMMMM', { locale: he });
     const timeStr = `${format(new Date(activity.endTime), 'HH:mm')} - ${format(startTime, 'HH:mm')}`;
-
-    const participantsData = MOCK_USERS.filter(u => activity.participants.includes(u.id));
 
     const handleJoin = () => {
         if (isJoined) {

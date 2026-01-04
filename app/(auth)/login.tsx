@@ -1,5 +1,6 @@
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
+import { createShadow, androidTextFix, preventFontScaling, androidButtonFix } from '@/constants/AndroidStyles';
 import { useApp } from '@/context/AppContext';
 import { useRouter } from 'expo-router';
 import { Lock, LogIn, Phone } from 'lucide-react-native';
@@ -13,19 +14,25 @@ export default function LoginScreen() {
     const colors = Colors[colorScheme];
     const router = useRouter();
 
-    const [phone, setPhone] = useState('');
+    const [phoneOrEmail, setPhoneOrEmail] = useState('');
     const [password, setPassword] = useState('');
 
-    const handleLogin = () => {
-        console.log('Login attempt:', phone, password);
-        if (phone && password) {
-            login(phone, password);
-            // Force navigation to main app after login
-            setTimeout(() => {
-                router.replace('/(tabs)');
-            }, 100);
+    const handleLogin = async () => {
+        console.log('Login attempt:', phoneOrEmail, password);
+        if (phoneOrEmail && password) {
+            try {
+                await login(phoneOrEmail, password);
+                // Wait a bit for auth state to update, then navigate
+                setTimeout(() => {
+                    router.replace('/(tabs)');
+                }, 500);
+            } catch (error) {
+                console.error('Login error:', error);
+                // Error is already handled in login function
+            }
         } else {
-            console.warn('Missing phone or password');
+            console.warn('Missing phone/email or password');
+            alert('אנא מלא את כל השדות');
         }
     };
 
@@ -54,11 +61,13 @@ export default function LoginScreen() {
                         <Phone size={20} color={colors.tabIconDefault} />
                         <TextInput
                             style={[styles.input, { color: colors.text }]}
-                            placeholder="מספר טלפון"
+                            placeholder="מספר טלפון או אימייל"
                             placeholderTextColor={colors.tabIconDefault}
-                            value={phone}
-                            onChangeText={setPhone}
-                            keyboardType="phone-pad"
+                            value={phoneOrEmail}
+                            onChangeText={setPhoneOrEmail}
+                            keyboardType="default"
+                            autoCapitalize="none"
+                            autoCorrect={false}
                             textAlign="right"
                         />
                     </View>
@@ -132,10 +141,14 @@ const styles = StyleSheet.create({
         fontSize: 42,
         fontWeight: '900',
         fontFamily: 'Inter',
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     subtitle: {
         fontSize: 16,
         marginTop: 10,
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     form: {
         width: '100%',
@@ -153,6 +166,8 @@ const styles = StyleSheet.create({
         flex: 1,
         marginRight: 10,
         fontSize: 16,
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     loginButton: {
         flexDirection: 'row-reverse',
@@ -161,17 +176,16 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         marginTop: 10,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-        elevation: 5,
+        ...createShadow(5),
+        ...androidButtonFix,
     },
     loginButtonText: {
         color: '#fff',
         fontSize: 18,
         fontWeight: 'bold',
         marginRight: 10,
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     registerLink: {
         flexDirection: 'row-reverse',
@@ -180,10 +194,14 @@ const styles = StyleSheet.create({
     },
     registerText: {
         fontSize: 14,
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     registerLinkText: {
         fontSize: 14,
         fontWeight: 'bold',
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     footer: {
         position: 'absolute',
@@ -201,5 +219,7 @@ const styles = StyleSheet.create({
     skipButtonText: {
         fontSize: 14,
         fontWeight: '600',
+        ...androidTextFix,
+        ...preventFontScaling,
     },
 });

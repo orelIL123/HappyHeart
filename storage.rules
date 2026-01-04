@@ -4,7 +4,19 @@ rules_version = '2';
 // allow <<read, write>>: if <<condition>>;
 service firebase.storage {
   match /b/{bucket}/o {
+    // Allow read/write to profile images
     match /profile_images/{allPaths=**} {
+      allow read, write: if true;
+    }
+    
+    // Allow read/write to certifications (for pending clown registrations)
+    match /certifications/{allPaths=**} {
+      allow read, write: if true;
+    }
+    
+    // For development: allow all read/write
+    // TODO: Tighten these rules before production deployment
+    match /{allPaths=**} {
       allow read, write: if true;
     }
   }

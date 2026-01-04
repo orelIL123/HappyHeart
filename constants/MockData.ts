@@ -8,6 +8,8 @@ export interface User {
     certificationUrl?: string;
     preferredArea: string;
     phone?: string;
+    email?: string;
+    authUid?: string;
     password?: string;
     approvalStatus?: 'pending' | 'approved' | 'rejected';
 }
@@ -39,6 +41,8 @@ export const MOCK_USERS: User[] = [
         role: 'clown',
         avatar: 'https://i.pravatar.cc/150?u=jacko',
         preferredArea: 'מרכז',
+        phone: '0501234567',
+        password: '123456',
         approvalStatus: 'approved',
     },
     {
@@ -47,6 +51,8 @@ export const MOCK_USERS: User[] = [
         role: 'organizer',
         avatar: 'https://i.pravatar.cc/150?u=fofo',
         preferredArea: 'צפון',
+        phone: '0502345678',
+        password: '123456',
         approvalStatus: 'approved',
     },
     {
@@ -55,6 +61,8 @@ export const MOCK_USERS: User[] = [
         role: 'admin',
         avatar: 'https://i.pravatar.cc/150?u=simcha',
         preferredArea: 'ירושלים',
+        phone: '0503456789',
+        password: '123456',
         approvalStatus: 'approved',
     },
     {

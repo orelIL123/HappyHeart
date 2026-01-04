@@ -1,5 +1,6 @@
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
+import { createShadow, androidTextFix, preventFontScaling } from '@/constants/AndroidStyles';
 import { Activity } from '@/constants/MockData';
 import { format } from 'date-fns';
 import { he } from 'date-fns/locale';
@@ -96,11 +97,7 @@ const styles = StyleSheet.create({
         padding: 20,
         marginBottom: 20,
         borderWidth: 1,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.05,
-        shadowRadius: 15,
-        elevation: 5,
+        ...createShadow(5),
     },
     header: {
         flexDirection: 'row-reverse',
@@ -118,6 +115,8 @@ const styles = StyleSheet.create({
         textAlign: 'right',
         fontFamily: 'Inter',
         marginBottom: 6,
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     departmentBadge: {
         paddingHorizontal: 10,
@@ -127,6 +126,8 @@ const styles = StyleSheet.create({
     departmentText: {
         fontSize: 12,
         fontWeight: '800',
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     joinedBadge: {
         paddingHorizontal: 10,
@@ -137,6 +138,8 @@ const styles = StyleSheet.create({
     joinedText: {
         fontSize: 12,
         fontWeight: '900',
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     details: {
         marginBottom: 20,
@@ -152,6 +155,9 @@ const styles = StyleSheet.create({
         textAlign: 'right',
         fontFamily: 'Inter',
         fontWeight: '600',
+        ...androidTextFix,
+        ...preventFontScaling,
+        flexShrink: 1,
     },
     footer: {
         flexDirection: 'row-reverse',
@@ -169,5 +175,7 @@ const styles = StyleSheet.create({
         fontWeight: '800',
         marginRight: 6,
         fontFamily: 'Inter',
+        ...androidTextFix,
+        ...preventFontScaling,
     },
 });

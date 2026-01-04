@@ -1,12 +1,13 @@
 import { Header } from '@/components/Header';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
+import { createShadow, androidTextFix, preventFontScaling, androidButtonFix } from '@/constants/AndroidStyles';
 import { CITIES, INSTITUTIONS } from '@/constants/MockData';
 import { useApp } from '@/context/AppContext';
 import { useRouter } from 'expo-router';
 import { ShieldAlert, Trash2 } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function CreateActivityScreen() {
     const { createActivity, currentUser } = useApp();
@@ -15,6 +16,7 @@ export default function CreateActivityScreen() {
     const router = useRouter();
 
     const departments = ['מיון ילדים', 'אונקולוגיה', 'כללי', 'טיפול נמרץ', 'יולדות'];
+    const populations = ['ילדים', 'נוער', 'מבוגרים'];
     const intensities = [
         { id: 'low', label: 'נמוכה', color: Colors[colorScheme].success },
         { id: 'medium', label: 'בינונית', color: Colors[colorScheme].secondary },
@@ -22,25 +24,32 @@ export default function CreateActivityScreen() {
     ];
 
     const [form, setForm] = useState({
-        title: '',
+        location: '',
         institution: INSTITUTIONS[0],
-        location: CITIES[0],
-        description: '',
-        requiredClowns: '2',
+        customInstitution: '',
+        department: '',
         date: new Date().toISOString().split('T')[0],
         startTime: '10:00',
         endTime: '12:00',
-        type: 'one-time' as 'one-time' | 'recurring',
-        contactPerson: '',
-        contactPhone: '',
+        population: '',
+        requiredClowns: '2',
+        coordinatorName: '',
+        coordinatorPhone: '',
+        description: '',
         intensity: 'medium' as 'low' | 'medium' | 'high',
         isUrgent: false,
         autoDelete: true,
     });
 
     const handleCreate = () => {
-        if (!form.title || !form.description || !form.contactPerson || !form.contactPhone) {
+        if (!form.location || !form.description || !form.coordinatorName || !form.coordinatorPhone || !form.population) {
             Alert.alert('שגיאה', 'אנא מלא את כל שדות החובה');
+            return;
+        }
+
+        const institutionName = form.institution === 'אחר' ? form.customInstitution : form.institution;
+        if (form.institution === 'אחר' && !form.customInstitution) {
+            Alert.alert('שגיאה', 'אנא הזן שם מוסד');
             return;
         }
 
@@ -52,18 +61,21 @@ export default function CreateActivityScreen() {
             expirationDate = endDateTime.toISOString();
         }
 
+        // Create title from the data
+        const title = `${institutionName}${form.department ? ' - ' + form.department : ''} - ${form.population}`;
+
         createActivity({
-            title: form.title,
-            institution: form.institution,
+            title: title,
+            institution: institutionName,
             location: form.location,
             description: form.description,
             requiredClowns: parseInt(form.requiredClowns),
-            type: form.type,
+            type: 'one-time',
             startTime: `${form.date}T${form.startTime}:00Z`,
             endTime: `${form.date}T${form.endTime}:00Z`,
             organizerId: currentUser?.id || '2',
-            contactPerson: form.contactPerson,
-            contactPhone: form.contactPhone,
+            contactPerson: form.coordinatorName,
+            contactPhone: form.coordinatorPhone,
             intensity: form.intensity,
             isUrgent: form.isUrgent,
             expirationDate,
@@ -78,80 +90,150 @@ export default function CreateActivityScreen() {
             <Header title="יצירת פעילות" />
             <ScrollView style={styles.container}>
                 <View style={styles.form}>
-                    <Text style={[styles.label, { color: colors.text }]}>כותרת הפעילות *</Text>
+                    <Text style={[styles.label, { color: colors.text }]}>מיקום *</Text>
                     <TextInput
                         style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-                        placeholder="למשל: יום הולדת במחלקת ילדים"
+                        placeholder="למשל: בית אבות, הוסטל, בית חולים וכו'"
                         placeholderTextColor={colors.tabIconDefault}
-                        value={form.title}
-                        onChangeText={(text) => setForm({ ...form, title: text })}
+                        value={form.location}
+                        onChangeText={(text) => setForm({ ...form, location: text })}
+                        textAlign="right"
+                    />
+
+                    <Text style={[styles.label, { color: colors.text }]}>מוסד</Text>
+                    <View style={styles.pickerContainer}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                            {[...INSTITUTIONS, 'אחר'].map(inst => (
+                                <TouchableOpacity
+                                    key={inst}
+                                    style={[
+                                        styles.chip,
+                                        form.institution === inst && { backgroundColor: colors.primary, borderColor: colors.primary },
+                                        { borderColor: colors.border }
+                                    ]}
+                                    onPress={() => setForm({ ...form, institution: inst })}
+                                >
+                                    <Text style={[styles.chipText, form.institution === inst && { color: '#fff' }, { color: colors.text }]}>{inst}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
+
+                    {form.institution === 'אחר' && (
+                        <TextInput
+                            style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border, marginTop: 10 }]}
+                            placeholder="הזן שם מוסד"
+                            placeholderTextColor={colors.tabIconDefault}
+                            value={form.customInstitution}
+                            onChangeText={(text) => setForm({ ...form, customInstitution: text })}
+                            textAlign="right"
+                        />
+                    )}
+
+                    <Text style={[styles.label, { color: colors.text }]}>מחלקה (לא חובה)</Text>
+                    <TextInput
+                        style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                        placeholder="למשל: מיון ילדים, אונקולוגיה וכו'"
+                        placeholderTextColor={colors.tabIconDefault}
+                        value={form.department}
+                        onChangeText={(text) => setForm({ ...form, department: text })}
                         textAlign="right"
                     />
 
                     <View style={styles.row}>
                         <View style={styles.flex1}>
-                            <Text style={[styles.label, { color: colors.text }]}>מוסד</Text>
-                            <View style={styles.pickerContainer}>
-                                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                                    {INSTITUTIONS.map(inst => (
-                                        <TouchableOpacity
-                                            key={inst}
-                                            style={[
-                                                styles.chip,
-                                                form.institution === inst && { backgroundColor: colors.primary, borderColor: colors.primary },
-                                                { borderColor: colors.border }
-                                            ]}
-                                            onPress={() => setForm({ ...form, institution: inst })}
-                                        >
-                                            <Text style={[styles.chipText, form.institution === inst && { color: '#fff' }, { color: colors.text }]}>{inst}</Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </ScrollView>
-                            </View>
+                            <Text style={[styles.label, { color: colors.text }]}>תאריך *</Text>
+                            <TextInput
+                                style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                                value={form.date}
+                                onChangeText={(text) => setForm({ ...form, date: text })}
+                                placeholder="YYYY-MM-DD"
+                                placeholderTextColor={colors.tabIconDefault}
+                                textAlign="center"
+                            />
                         </View>
                     </View>
 
-                    <Text style={[styles.label, { color: colors.text }]}>איש קשר במוסד *</Text>
-                    <TextInput
-                        style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-                        placeholder="שם מלא של איש הקשר"
-                        placeholderTextColor={colors.tabIconDefault}
-                        value={form.contactPerson}
-                        onChangeText={(text) => setForm({ ...form, contactPerson: text })}
-                        textAlign="right"
-                    />
+                    <View style={styles.row}>
+                        <View style={styles.flex1}>
+                            <Text style={[styles.label, { color: colors.text }]}>שעת התחלה *</Text>
+                            <TextInput
+                                style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                                value={form.startTime}
+                                onChangeText={(text) => setForm({ ...form, startTime: text })}
+                                placeholder="HH:MM"
+                                placeholderTextColor={colors.tabIconDefault}
+                                textAlign="center"
+                            />
+                        </View>
+                        <View style={styles.flex1}>
+                            <Text style={[styles.label, { color: colors.text }]}>שעת סיום *</Text>
+                            <TextInput
+                                style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border, marginLeft: 10 }]}
+                                value={form.endTime}
+                                onChangeText={(text) => setForm({ ...form, endTime: text })}
+                                placeholder="HH:MM"
+                                placeholderTextColor={colors.tabIconDefault}
+                                textAlign="center"
+                            />
+                        </View>
+                    </View>
 
-                    <Text style={[styles.label, { color: colors.text }]}>טלפון איש קשר *</Text>
-                    <TextInput
-                        style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-                        placeholder="מספר טלפון"
-                        placeholderTextColor={colors.tabIconDefault}
-                        value={form.contactPhone}
-                        onChangeText={(text) => setForm({ ...form, contactPhone: text })}
-                        textAlign="right"
-                        keyboardType="phone-pad"
-                    />
-
-                    <Text style={[styles.label, { color: colors.text }]}>רמת אינטנסיביות</Text>
+                    <Text style={[styles.label, { color: colors.text }]}>אוכלוסיה *</Text>
                     <View style={styles.pickerContainer}>
                         <View style={styles.intensityRow}>
-                            {intensities.map(intensity => (
+                            {populations.map(pop => (
                                 <TouchableOpacity
-                                    key={intensity.id}
+                                    key={pop}
                                     style={[
                                         styles.intensityChip,
-                                        form.intensity === intensity.id && { backgroundColor: intensity.color, borderColor: intensity.color },
+                                        form.population === pop && { backgroundColor: colors.primary, borderColor: colors.primary },
                                         { borderColor: colors.border }
                                     ]}
-                                    onPress={() => setForm({ ...form, intensity: intensity.id as any })}
+                                    onPress={() => setForm({ ...form, population: pop })}
                                 >
-                                    <Text style={[styles.chipText, form.intensity === intensity.id && { color: '#fff' }, { color: colors.text }]}>
-                                        {intensity.label}
+                                    <Text style={[styles.chipText, form.population === pop && { color: '#fff' }, { color: colors.text }]}>
+                                        {pop}
                                     </Text>
                                 </TouchableOpacity>
                             ))}
                         </View>
                     </View>
+
+                    <View style={styles.row}>
+                        <View style={styles.flex1}>
+                            <Text style={[styles.label, { color: colors.text }]}>מספר ליצנים *</Text>
+                            <TextInput
+                                style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                                keyboardType="numeric"
+                                value={form.requiredClowns}
+                                onChangeText={(text) => setForm({ ...form, requiredClowns: text })}
+                                textAlign="center"
+                            />
+                        </View>
+                    </View>
+
+                    <Text style={[styles.label, { color: colors.text }]}>שם רכז פעילות *</Text>
+                    <TextInput
+                        style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                        placeholder="שם מלא של רכז הפעילות"
+                        placeholderTextColor={colors.tabIconDefault}
+                        value={form.coordinatorName}
+                        onChangeText={(text) => setForm({ ...form, coordinatorName: text })}
+                        textAlign="right"
+                    />
+
+                    <Text style={[styles.label, { color: colors.text }]}>מספר טלפון של הרכז לבירורים *</Text>
+                    <TextInput
+                        style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                        placeholder="מספר טלפון"
+                        placeholderTextColor={colors.tabIconDefault}
+                        value={form.coordinatorPhone}
+                        onChangeText={(text) => setForm({ ...form, coordinatorPhone: text })}
+                        textAlign="right"
+                        keyboardType="phone-pad"
+                    />
+
 
                     <View style={[styles.section, { backgroundColor: form.isUrgent ? colors.error + '10' : colors.card, borderColor: form.isUrgent ? colors.error : colors.border }]}>
                         <View style={styles.urgentRow}>
@@ -200,37 +282,6 @@ export default function CreateActivityScreen() {
                         </View>
                     </View>
 
-                    <Text style={[styles.label, { color: colors.text }]}>מיקום (עיר)</Text>
-                    <View style={styles.pickerContainer}>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                            {CITIES.map(city => (
-                                <TouchableOpacity
-                                    key={city}
-                                    style={[
-                                        styles.chip,
-                                        form.location === city && { backgroundColor: colors.primary, borderColor: colors.primary },
-                                        { borderColor: colors.border }
-                                    ]}
-                                    onPress={() => setForm({ ...form, location: city })}
-                                >
-                                    <Text style={[styles.chipText, form.location === city && { color: '#fff' }, { color: colors.text }]}>{city}</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </ScrollView>
-                    </View>
-
-                    <View style={styles.row}>
-                        <View style={styles.flex1}>
-                            <Text style={[styles.label, { color: colors.text }]}>כמות ליצנים דרושה</Text>
-                            <TextInput
-                                style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-                                keyboardType="numeric"
-                                value={form.requiredClowns}
-                                onChangeText={(text) => setForm({ ...form, requiredClowns: text })}
-                                textAlign="center"
-                            />
-                        </View>
-                    </View>
 
                     <Text style={[styles.label, { color: colors.text }]}>תיאור הפעילות *</Text>
                     <TextInput
@@ -262,7 +313,7 @@ const styles = StyleSheet.create({
     },
     form: {
         padding: 20,
-        paddingBottom: 100,
+        paddingBottom: Platform.OS === 'android' ? 120 : 100,
     },
     label: {
         fontSize: 16,
@@ -270,6 +321,8 @@ const styles = StyleSheet.create({
         textAlign: 'right',
         marginBottom: 8,
         marginTop: 15,
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     input: {
         height: 50,
@@ -277,6 +330,8 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         paddingHorizontal: 15,
         fontSize: 16,
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     textArea: {
         height: 100,
@@ -306,6 +361,8 @@ const styles = StyleSheet.create({
     },
     chipText: {
         fontSize: 14,
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     submitButton: {
         height: 60,
@@ -314,11 +371,8 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginTop: 40,
         marginBottom: 40,
-        elevation: 4,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
+        ...createShadow(4),
+        ...androidButtonFix,
     },
     intensityRow: {
         flexDirection: 'row-reverse',
@@ -337,6 +391,8 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 18,
         fontWeight: 'bold',
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     section: {
         marginTop: 20,
@@ -367,11 +423,16 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '700',
         textAlign: 'right',
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     rowSubtitle: {
         fontSize: 12,
         textAlign: 'right',
         marginTop: 2,
+        ...androidTextFix,
+        ...preventFontScaling,
+        flexShrink: 1,
     },
     urgentWarning: {
         padding: 12,
@@ -384,5 +445,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         textAlign: 'right',
         lineHeight: 18,
+        ...androidTextFix,
+        ...preventFontScaling,
     },
 });
