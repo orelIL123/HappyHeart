@@ -1,15 +1,15 @@
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { createShadow, androidTextFix, preventFontScaling, androidButtonFix, androidBottomSafeArea } from '@/constants/AndroidStyles';
-import { User } from '@/constants/MockData';
+import { Comment, User } from '@/constants/MockData';
 import { useApp } from '@/context/AppContext';
 import { firebaseService } from '@/services/firebaseService';
+import { pushNotificationService } from '@/services/pushNotificationService';
 import { format } from 'date-fns';
 import { he } from 'date-fns/locale';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { AlertTriangle, Building, Calendar as CalendarIcon, Clock, MapPin, Phone as PhoneIcon, Share2, MessageCircle as WhatsAppIcon } from 'lucide-react-native';
+import { AlertTriangle, Building, Calendar as CalendarIcon, Clock, Heart, MapPin, MessageCircle, Phone as PhoneIcon, Send, Share2, MessageCircle as WhatsAppIcon } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { Alert, Image, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Linking, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function ActivityDetailsScreen() {
     const { id } = useLocalSearchParams();
@@ -20,6 +20,9 @@ export default function ActivityDetailsScreen() {
 
     const [selectedParticipant, setSelectedParticipant] = React.useState<User | null>(null);
     const [participantsData, setParticipantsData] = useState<User[]>([]);
+    const [comments, setComments] = useState<Comment[]>([]);
+    const [newComment, setNewComment] = useState('');
+    const [isSubmittingComment, setIsSubmittingComment] = useState(false);
 
     const activity = activities.find(a => a.id === id);
     
@@ -31,10 +34,45 @@ export default function ActivityDetailsScreen() {
         }
     }, [activity?.participants]);
 
+    // Subscribe to comments
+    useEffect(() => {
+        if (!id) return;
+        const unsubscribe = firebaseService.subscribeToComments(id, 
+            (data) => {
+                setComments(data);
+            },
+            (error) => {
+                console.error('Error subscribing to comments:', error);
+                // If there's an index error, try to load comments without orderBy
+                if (error?.code === 'failed-precondition' || error?.message?.includes('index')) {
+                    console.warn('Index missing for comments, trying fallback...');
+                    firebaseService.getCommentsWithoutOrderBy(id).then(setComments).catch((err) => {
+                        console.error('Fallback also failed:', err);
+                        Alert.alert(
+                            'שגיאה בטעינת תגובות',
+                            'לא הצלחנו לטעון את התגובות. אנא נסה לרענן את הדף.',
+                            [{ text: 'הבנתי' }]
+                        );
+                    });
+                } else {
+                    Alert.alert(
+                        'שגיאה בטעינת תגובות',
+                        'לא הצלחנו לטעון את התגובות. אנא נסה לרענן את הדף.',
+                        [{ text: 'הבנתי' }]
+                    );
+                }
+            }
+        );
+        return () => unsubscribe();
+    }, [id]);
+
     if (!activity) return null;
 
     const isJoined = currentUser ? activity.participants.includes(currentUser.id) : false;
     const isFull = activity.participants.length >= activity.requiredClowns;
+    const likes = activity.likes || [];
+    const isLiked = currentUser ? likes.includes(currentUser.id) : false;
+    const likesCount = likes.length;
 
     const startTime = new Date(activity.startTime);
     const dateStr = format(startTime, 'EEEE, d בMMMM', { locale: he });
@@ -72,6 +110,129 @@ export default function ActivityDetailsScreen() {
     const handleCall = (phone?: string) => {
         if (!phone) return;
         Linking.openURL(`tel:${phone}`);
+    };
+
+    const handleToggleLike = async () => {
+        if (!currentUser) {
+            Alert.alert('נדרש התחברות', 'אנא התחבר כדי לסמן לייק');
+            return;
+        }
+        try {
+            await firebaseService.toggleLike(activity.id, currentUser.id);
+        } catch (error) {
+            console.error('Error toggling like:', error);
+            Alert.alert('שגיאה', 'לא הצלחנו לעדכן את הלייק. נסה שוב מאוחר יותר');
+        }
+    };
+
+    const handleAddComment = async () => {
+        if (!currentUser) {
+            Alert.alert('נדרש התחברות', 'אנא התחבר כדי להוסיף תגובה');
+            return;
+        }
+        if (!newComment.trim()) {
+            Alert.alert('תגובה ריקה', 'אנא הזן תגובה');
+            return;
+        }
+        
+        setIsSubmittingComment(true);
+        try {
+            await firebaseService.addComment(
+                activity.id,
+                currentUser.id,
+                currentUser.name,
+                currentUser.avatar,
+                newComment
+            );
+            setNewComment('');
+            Alert.alert('הצלחה!', 'התגובה נוספה בהצלחה');
+
+            // Send notifications to other commenters and activity organizer
+            try {
+                // Get all commenters for this activity
+                const commenters = await firebaseService.getActivityCommenters(activity.id);
+                
+                // Get activity organizer
+                const organizerId = activity.organizerId;
+                
+                // Combine commenters and organizer, exclude current user
+                const userIdsToNotify = [
+                    ...commenters.filter(id => id !== currentUser.id),
+                    organizerId
+                ].filter((id, index, self) => id && self.indexOf(id) === index); // Remove duplicates
+
+                if (userIdsToNotify.length > 0) {
+                    // Get push tokens for these users
+                    const userTokens = await firebaseService.getUserPushTokens(userIdsToNotify);
+                    
+                    // Send push notifications
+                    const pushTokens = userTokens
+                        .filter(ut => ut.pushToken)
+                        .map(ut => ut.pushToken as string);
+
+                    if (pushTokens.length > 0) {
+                        await pushNotificationService.sendPushNotifications(
+                            pushTokens,
+                            `תגובה חדשה ב${activity.title}`,
+                            `${currentUser.name}: ${newComment.substring(0, 50)}${newComment.length > 50 ? '...' : ''}`,
+                            { activityId: activity.id, type: 'comment_added' }
+                        );
+                    }
+
+                    // Create notifications in Firestore for all users
+                    const notificationPromises = userIdsToNotify.map(userId =>
+                        firebaseService.createNotification(userId, {
+                            type: 'comment_added',
+                            title: `תגובה חדשה ב${activity.title}`,
+                            body: `${currentUser.name}: ${newComment.substring(0, 100)}${newComment.length > 100 ? '...' : ''}`,
+                            activityId: activity.id,
+                            data: { commenterId: currentUser.id, commenterName: currentUser.name }
+                        })
+                    );
+                    await Promise.all(notificationPromises);
+                }
+            } catch (notificationError) {
+                console.error('Error sending notifications for comment:', notificationError);
+                // Don't fail the comment creation if notifications fail
+            }
+        } catch (error: any) {
+            console.error('Error adding comment:', error);
+            let errorMessage = 'לא הצלחנו להוסיף את התגובה. נסה שוב מאוחר יותר';
+            if (error?.message) {
+                errorMessage = error.message;
+            } else if (error?.code === 'permission-denied') {
+                errorMessage = 'אין לך הרשאה להוסיף תגובה. אנא פנה למנהל המערכת.';
+            }
+            Alert.alert('שגיאה', errorMessage);
+        } finally {
+            setIsSubmittingComment(false);
+        }
+    };
+
+    const handleDeleteComment = async (commentId: string, commentUserId: string) => {
+        if (!currentUser) return;
+        
+        const canDelete = currentUser.role === 'admin' || currentUser.id === commentUserId;
+        if (!canDelete) {
+            Alert.alert('אין הרשאה', 'רק מנהל או בעל התגובה יכולים למחוק אותה');
+            return;
+        }
+
+        Alert.alert('מחיקת תגובה', 'האם אתה בטוח שברצונך למחוק את התגובה?', [
+            { text: 'ביטול', style: 'cancel' },
+            {
+                text: 'מחק',
+                style: 'destructive',
+                onPress: async () => {
+                    try {
+                        await firebaseService.deleteComment(commentId);
+                    } catch (error) {
+                        console.error('Error deleting comment:', error);
+                        Alert.alert('שגיאה', 'לא הצלחנו למחוק את התגובה');
+                    }
+                }
+            }
+        ]);
     };
 
     return (
@@ -175,6 +336,99 @@ export default function ActivityDetailsScreen() {
                             ))
                         )}
                     </View>
+                </View>
+
+                {/* Likes Section */}
+                <View style={styles.section}>
+                    <TouchableOpacity
+                        style={[styles.likeSection, { backgroundColor: colors.card, borderColor: colors.border }]}
+                        onPress={handleToggleLike}
+                        disabled={!currentUser}
+                    >
+                        <Heart
+                            size={24}
+                            color={isLiked ? colors.error : colors.tabIconDefault}
+                            fill={isLiked ? colors.error : 'none'}
+                        />
+                        <Text style={[styles.likeText, { color: colors.text }]}>
+                            {likesCount > 0 ? `${likesCount} לייק${likesCount > 1 ? 'ים' : ''}` : 'הוסף לייק'}
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+
+                {/* Comments Section */}
+                <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                        <MessageCircle size={20} color={colors.primary} />
+                        <Text style={[styles.sectionTitle, { color: colors.text, marginRight: 10 }]}>
+                            תגובות ({comments.length})
+                        </Text>
+                    </View>
+
+                    {/* Comments List */}
+                    {comments.length === 0 ? (
+                        <View style={[styles.emptyCommentsContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                            <Text style={[styles.emptyText, { color: colors.tabIconDefault }]}>אין תגובות עדיין. היה הראשון להגיב!</Text>
+                        </View>
+                    ) : (
+                        <View style={styles.commentsList}>
+                            {comments.map(comment => {
+                                const commentDate = new Date(comment.createdAt);
+                                const canDelete = currentUser && (currentUser.role === 'admin' || currentUser.id === comment.userId);
+                                
+                                return (
+                                    <View key={comment.id} style={[styles.commentItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                                        <View style={styles.commentHeader}>
+                                            <Image source={{ uri: comment.userAvatar }} style={styles.commentAvatar} />
+                                            <View style={styles.commentInfo}>
+                                                <Text style={[styles.commentAuthor, { color: colors.text }]}>{comment.userName}</Text>
+                                                <Text style={[styles.commentDate, { color: colors.tabIconDefault }]}>
+                                                    {format(commentDate, 'd בMMMM, HH:mm', { locale: he })}
+                                                </Text>
+                                            </View>
+                                            {canDelete && (
+                                                <TouchableOpacity
+                                                    onPress={() => handleDeleteComment(comment.id, comment.userId)}
+                                                    style={styles.deleteCommentButton}
+                                                >
+                                                    <Text style={[styles.deleteCommentText, { color: colors.error }]}>מחק</Text>
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
+                                        <Text style={[styles.commentText, { color: colors.text }]}>{comment.text}</Text>
+                                    </View>
+                                );
+                            })}
+                        </View>
+                    )}
+
+                    {/* Add Comment Input */}
+                    {currentUser && (
+                        <View style={[styles.addCommentContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                            <Image source={{ uri: currentUser.avatar }} style={styles.commentInputAvatar} />
+                            <TextInput
+                                style={[styles.commentInput, { color: colors.text, backgroundColor: colors.background }]}
+                                placeholder="הוסף תגובה..."
+                                placeholderTextColor={colors.tabIconDefault}
+                                value={newComment}
+                                onChangeText={setNewComment}
+                                multiline
+                                textAlign="right"
+                                editable={!isSubmittingComment}
+                            />
+                            <TouchableOpacity
+                                onPress={handleAddComment}
+                                disabled={isSubmittingComment || !newComment.trim()}
+                                style={[
+                                    styles.sendButton,
+                                    { backgroundColor: colors.primary },
+                                    (isSubmittingComment || !newComment.trim()) && { opacity: 0.5 }
+                                ]}
+                            >
+                                <Send size={20} color="#fff" />
+                            </TouchableOpacity>
+                        </View>
+                    )}
                 </View>
 
                 {/* Participant Details Modal */}
@@ -485,5 +739,101 @@ const styles = StyleSheet.create({
     closeButtonText: {
         fontSize: 14,
         fontWeight: '600',
+    },
+    likeSection: {
+        flexDirection: 'row-reverse',
+        alignItems: 'center',
+        padding: 16,
+        borderRadius: 15,
+        borderWidth: 1,
+        marginTop: 10,
+    },
+    likeText: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginRight: 10,
+    },
+    commentsList: {
+        marginTop: 10,
+    },
+    commentItem: {
+        padding: 15,
+        borderRadius: 15,
+        borderWidth: 1,
+        marginBottom: 12,
+    },
+    commentHeader: {
+        flexDirection: 'row-reverse',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    commentAvatar: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        marginLeft: 10,
+    },
+    commentInfo: {
+        flex: 1,
+    },
+    commentAuthor: {
+        fontSize: 15,
+        fontWeight: '700',
+        marginBottom: 2,
+    },
+    commentDate: {
+        fontSize: 12,
+    },
+    commentText: {
+        fontSize: 15,
+        lineHeight: 22,
+        textAlign: 'right',
+    },
+    deleteCommentButton: {
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+    },
+    deleteCommentText: {
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    emptyCommentsContainer: {
+        padding: 20,
+        borderRadius: 15,
+        borderWidth: 1,
+        borderStyle: 'dashed',
+        alignItems: 'center',
+        marginTop: 10,
+    },
+    addCommentContainer: {
+        flexDirection: 'row-reverse',
+        alignItems: 'flex-end',
+        padding: 12,
+        borderRadius: 15,
+        borderWidth: 1,
+        marginTop: 15,
+    },
+    commentInputAvatar: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        marginLeft: 10,
+    },
+    commentInput: {
+        flex: 1,
+        minHeight: 40,
+        maxHeight: 100,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 20,
+        fontSize: 15,
+        marginRight: 10,
+    },
+    sendButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
 });

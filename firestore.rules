@@ -2,12 +2,87 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // DEVELOPMENT RULES - Allow all read/write for testing
-    // TODO: Tighten these rules before production deployment
-    
-    // ALL COLLECTIONS - allow all read/write for testing
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isApprovedUser() {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'approved';
+    }
+
+    function isAdmin() {
+      return isApprovedUser() &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isOrganizer() {
+      return isApprovedUser() &&
+             (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'organizer' ||
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+
+    // Users collection - approved clowns can read all, admins can write
+    match /users/{userId} {
+      allow read: if isApprovedUser();
+      allow create: if isSignedIn(); // Allow registration
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // Pending clowns - only admins can read, anyone can create (registration)
+    match /pending_clowns/{clownId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    // Activities - approved users can read, organizers/admins can create/update/delete
+    match /activities/{activityId} {
+      allow read: if isApprovedUser();
+      allow create: if isOrganizer();
+      allow update: if isOrganizer() ||
+                       (isApprovedUser() &&
+                        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participants']) ||
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) ||
+                         request.resource.data.diff(resource.data).affectedKeys().hasAll(['participants', 'likes'])));
+      allow delete: if isOrganizer();
+    }
+
+    // Availabilities - users can manage their own
+    match /availabilities/{userId} {
+      allow read: if isApprovedUser();
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Tutorials - all approved users can read, admins can write
+    match /tutorials/{tutorialId} {
+      allow read: if isApprovedUser();
+      allow write: if isAdmin();
+    }
+
+    // Comments - approved users can read and create, users can delete their own, admins can delete any
+    match /comments/{commentId} {
+      allow read: if isApprovedUser();
+      allow create: if isApprovedUser();
+      allow delete: if isApprovedUser() && 
+                       (resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if false; // Comments cannot be edited, only deleted
+    }
+
+    // Notifications - users can read their own, system can create
+    match /notifications/{notificationId} {
+      allow read: if isApprovedUser() && resource.data.userId == request.auth.uid;
+      allow create: if isApprovedUser(); // Allow approved users to create notifications (for other users)
+      allow update: if isApprovedUser() && resource.data.userId == request.auth.uid; // Users can mark their own as read
+      allow delete: if isApprovedUser() && resource.data.userId == request.auth.uid; // Users can delete their own
+    }
+
+    // Default deny for everything else
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

@@ -16,12 +16,12 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-// Mapping of phone numbers to emails (based on createUsersAuth.js)
+// Mapping of phone numbers to emails (matches createUsersAuth.js format)
 const phoneToEmail = {
-    '0501234567': 'jacko@happyhart.app',
-    '0502345678': 'fofo@happyhart.app',
-    '0503456789': 'simcha@happyhart.app',
-    '0529250237': 'amos@happyhart.app'
+    '0501234567': '0501234567@happyhart.app',
+    '0502345678': '0502345678@happyhart.app',
+    '0503456789': '0503456789@happyhart.app',
+    '0529250237': '0529250237@happyhart.app'
 };
 
 async function linkUsersToAuth() {

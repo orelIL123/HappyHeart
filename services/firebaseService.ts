@@ -1,4 +1,10 @@
 import {
+    createUserWithEmailAndPassword,
+    User as FirebaseAuthUser,
+    signInWithEmailAndPassword,
+    signOut
+} from 'firebase/auth';
+import {
     addDoc,
     arrayRemove,
     arrayUnion,
@@ -16,14 +22,8 @@ import {
     writeBatch
 } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { 
-    createUserWithEmailAndPassword, 
-    signInWithEmailAndPassword, 
-    signOut,
-    User as FirebaseAuthUser 
-} from 'firebase/auth';
-import { db, storage, auth } from '../config/firebaseConfig';
-import { Activity, User } from '../constants/MockData';
+import { auth, db, storage } from '../config/firebaseConfig';
+import { Activity, Comment, User } from '../constants/MockData';
 
 export const firebaseService = {
     // Activities
@@ -49,7 +49,8 @@ export const firebaseService = {
     createActivity: async (activity: Omit<Activity, 'id' | 'participants'>) => {
         return await addDoc(collection(db, 'activities'), {
             ...activity,
-            participants: []
+            participants: [],
+            likes: []
         });
     },
 
@@ -186,36 +187,37 @@ export const firebaseService = {
         }
     },
 
-    // New: Register user in Firebase Auth
+    // New: Register user in Firebase Auth and directly create approved user
     registerWithEmailAndPassword: async (email: string, password: string, userData: Omit<User, 'id'>): Promise<FirebaseAuthUser> => {
         try {
             // Validate email format
             if (!email || !email.includes('@')) {
                 throw new Error('כתובת אימייל לא תקינה');
             }
-            
+
             // Validate password length
             if (!password || password.length < 6) {
                 throw new Error('הסיסמה חייבת להכיל לפחות 6 תווים');
             }
-            
+
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const authUser = userCredential.user;
-            
-            // Store user data in Firestore with auth UID
-            const userRef = doc(db, 'pending_clowns', authUser.uid);
+
+            // Store user data directly in users collection as approved
+            const userRef = doc(db, 'users', authUser.uid);
             await setDoc(userRef, {
                 ...userData,
                 email,
                 authUid: authUser.uid,
-                approvalStatus: 'pending',
+                approvalStatus: 'approved',
+                role: userData.role || 'clown',
                 createdAt: new Date().toISOString()
             });
-            
+
             return authUser;
         } catch (error: any) {
             console.error('Error registering with email and password:', error);
-            
+
             // Handle specific Firebase Auth errors
             if (error.code === 'auth/email-already-in-use') {
                 throw new Error('כתובת האימייל כבר בשימוש. אם אתה כבר רשום, נסה להתחבר במקום');
@@ -228,12 +230,12 @@ export const firebaseService = {
             } else if (error.code === 'auth/network-request-failed') {
                 throw new Error('בעיית רשת. אנא בדוק את החיבור לאינטרנט ונסה שוב');
             }
-            
+
             // Re-throw with original message if it's already a string
             if (typeof error === 'string' || error.message) {
                 throw error;
             }
-            
+
             throw new Error('ההרשמה נכשלה. נסה שוב מאוחר יותר');
         }
     },
@@ -423,5 +425,176 @@ export const firebaseService = {
         // Update user profile with new avatar URL
         await firebaseService.updateUser(userId, { avatar: downloadURL });
         return downloadURL;
+    },
+
+    // Likes
+    toggleLike: async (activityId: string, userId: string) => {
+        const activityRef = doc(db, 'activities', activityId);
+        const activitySnap = await getDoc(activityRef);
+        
+        if (!activitySnap.exists()) {
+            throw new Error('Activity not found');
+        }
+        
+        const activityData = activitySnap.data() as Activity;
+        const likes = activityData.likes || [];
+        const isLiked = likes.includes(userId);
+        
+        if (isLiked) {
+            return await updateDoc(activityRef, {
+                likes: arrayRemove(userId)
+            });
+        } else {
+            return await updateDoc(activityRef, {
+                likes: arrayUnion(userId)
+            });
+        }
+    },
+
+    // Comments
+    subscribeToComments: (activityId: string, callback: (comments: Comment[]) => void, errorCallback?: (error: any) => void) => {
+        const q = query(
+            collection(db, 'comments'),
+            where('activityId', '==', activityId),
+            orderBy('createdAt', 'asc')
+        );
+        return onSnapshot(q,
+            (snapshot) => {
+                const comments = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                })) as Comment[];
+                callback(comments);
+            },
+            (error) => {
+                console.error('Firestore Comments Subscription Error:', error);
+                if (errorCallback) {
+                    errorCallback(error);
+                }
+            }
+        );
+    },
+
+    getCommentsWithoutOrderBy: async (activityId: string): Promise<Comment[]> => {
+        const q = query(
+            collection(db, 'comments'),
+            where('activityId', '==', activityId)
+        );
+        const snapshot = await getDocs(q);
+        const comments = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        })) as Comment[];
+        // Sort manually by createdAt
+        return comments.sort((a, b) => {
+            const dateA = new Date(a.createdAt).getTime();
+            const dateB = new Date(b.createdAt).getTime();
+            return dateA - dateB;
+        });
+    },
+
+    addComment: async (activityId: string, userId: string, userName: string, userAvatar: string, text: string) => {
+        if (!text.trim()) {
+            throw new Error('Comment text cannot be empty');
+        }
+        
+        return await addDoc(collection(db, 'comments'), {
+            activityId,
+            userId,
+            userName,
+            userAvatar,
+            text: text.trim(),
+            createdAt: new Date().toISOString()
+        });
+    },
+
+    deleteComment: async (commentId: string) => {
+        return await deleteDoc(doc(db, 'comments', commentId));
+    },
+
+    // Notifications
+    createNotification: async (userId: string, notificationData: {
+        type: string;
+        title: string;
+        body: string;
+        activityId?: string;
+        data?: Record<string, any>;
+    }) => {
+        const notificationRef = collection(db, 'notifications');
+        return await addDoc(notificationRef, {
+            userId,
+            ...notificationData,
+            read: false,
+            createdAt: new Date().toISOString(),
+        });
+    },
+
+    getUserPushTokens: async (userIds: string[]): Promise<Array<{ userId: string; pushToken: string | null }>> => {
+        if (userIds.length === 0) return [];
+        
+        const results: Array<{ userId: string; pushToken: string | null }> = [];
+        
+        // Firestore has a limit of 10 items in 'in' queries, so we batch
+        const batchSize = 10;
+        for (let i = 0; i < userIds.length; i += batchSize) {
+            const batch = userIds.slice(i, i + batchSize);
+            const q = query(
+                collection(db, 'users'),
+                where('__name__', 'in', batch)
+            );
+            const snapshot = await getDocs(q);
+            snapshot.docs.forEach(doc => {
+                const userData = doc.data();
+                results.push({
+                    userId: doc.id,
+                    pushToken: userData.pushToken || null
+                });
+            });
+        }
+        
+        return results;
+    },
+
+    getActivityCommenters: async (activityId: string): Promise<string[]> => {
+        const q = query(
+            collection(db, 'comments'),
+            where('activityId', '==', activityId)
+        );
+        const snapshot = await getDocs(q);
+        const commenters = new Set<string>();
+        snapshot.docs.forEach(doc => {
+            const commentData = doc.data();
+            if (commentData.userId) {
+                commenters.add(commentData.userId);
+            }
+        });
+        return Array.from(commenters);
+    },
+
+    subscribeToUserNotifications: (userId: string, callback: (notifications: any[]) => void) => {
+        const q = query(
+            collection(db, 'notifications'),
+            where('userId', '==', userId),
+            orderBy('createdAt', 'desc')
+        );
+        return onSnapshot(q,
+            (snapshot) => {
+                const notifications = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                callback(notifications);
+            },
+            (error) => {
+                console.error('Firestore Notifications Subscription Error:', error);
+            }
+        );
+    },
+
+    markNotificationAsRead: async (notificationId: string) => {
+        const notificationRef = doc(db, 'notifications', notificationId);
+        return await updateDoc(notificationRef, {
+            read: true
+        });
     }
 };

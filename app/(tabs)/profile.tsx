@@ -8,9 +8,10 @@ import { useApp } from '@/context/AppContext';
 import { firebaseService } from '@/services/firebaseService';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { Award, Calendar, ChevronLeft, Info, LogOut, PlusCircle, Users } from 'lucide-react-native';
+import { Award, Calendar, ChevronLeft, Info, LogOut, PlusCircle, Users, RefreshCw } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View, Platform } from 'react-native';
+import * as Updates from 'expo-updates';
 
 export default function ProfileScreen() {
     const { currentUser, logout, approveClown, rejectClown, isLoadingSession, updateUserProfile, activities } = useApp();
@@ -20,6 +21,7 @@ export default function ProfileScreen() {
 
     const [pendingClowns, setPendingClowns] = useState<User[]>([]);
     const [uploading, setUploading] = useState(false);
+    const [checkingUpdate, setCheckingUpdate] = useState(false);
 
     useEffect(() => {
         if (currentUser?.role === 'admin') {
@@ -43,6 +45,71 @@ export default function ProfileScreen() {
             </View>
         );
     }
+
+    const handleCheckForUpdates = async () => {
+        if (__DEV__) {
+            Alert.alert('מצב פיתוח', 'בדיקת עדכונים לא זמינה במצב פיתוח');
+            return;
+        }
+
+        if (!Updates.isEnabled) {
+            Alert.alert('לא זמין', 'עדכונים אוטומטיים לא מופעלים באפליקציה זו');
+            return;
+        }
+
+        setCheckingUpdate(true);
+
+        try {
+            console.log('Checking for updates manually...');
+            const update = await Updates.checkForUpdateAsync();
+
+            if (update.isAvailable) {
+                Alert.alert(
+                    'עדכון זמין! 🎉',
+                    'נמצא עדכון חדש לאפליקציה. האם להוריד ולהתקין?',
+                    [
+                        {
+                            text: 'ביטול',
+                            style: 'cancel',
+                            onPress: () => setCheckingUpdate(false)
+                        },
+                        {
+                            text: 'הורד והתקן',
+                            onPress: async () => {
+                                try {
+                                    console.log('Downloading update...');
+                                    await Updates.fetchUpdateAsync();
+                                    console.log('Update downloaded! Reloading...');
+
+                                    Alert.alert(
+                                        'העדכון הותקן! ✅',
+                                        'האפליקציה תתחיל מחדש כדי להחיל את העדכון',
+                                        [
+                                            {
+                                                text: 'אישור',
+                                                onPress: () => Updates.reloadAsync()
+                                            }
+                                        ]
+                                    );
+                                } catch (error) {
+                                    console.error('Error downloading update:', error);
+                                    Alert.alert('שגיאה', 'חלה שגיאה בהורדת העדכון. נסה שוב מאוחר יותר');
+                                    setCheckingUpdate(false);
+                                }
+                            }
+                        }
+                    ]
+                );
+            } else {
+                Alert.alert('אין עדכונים 👍', 'האפליקציה מעודכנת לגרסה האחרונה!');
+                setCheckingUpdate(false);
+            }
+        } catch (error) {
+            console.error('Error checking for updates:', error);
+            Alert.alert('שגיאה', 'חלה שגיאה בבדיקת עדכונים. בדוק את החיבור לאינטרנט ונסה שוב');
+            setCheckingUpdate(false);
+        }
+    };
 
     const handleApprove = async (clown: User) => {
         Alert.alert(
@@ -206,6 +273,26 @@ export default function ProfileScreen() {
                                 <Info size={20} color={colors.accent} />
                             </View>
                             <Text style={[styles.menuItemText, { color: colors.text }]}>תעודת ליצן רפואי</Text>
+                        </View>
+                        <ChevronLeft size={20} color={colors.tabIconDefault} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 12 }]}
+                        onPress={handleCheckForUpdates}
+                        disabled={checkingUpdate}
+                    >
+                        <View style={styles.menuItemContent}>
+                            <View style={[styles.menuIconContainer, { backgroundColor: colors.primary + '15' }]}>
+                                {checkingUpdate ? (
+                                    <ActivityIndicator size="small" color={colors.primary} />
+                                ) : (
+                                    <RefreshCw size={20} color={colors.primary} />
+                                )}
+                            </View>
+                            <Text style={[styles.menuItemText, { color: colors.text }]}>
+                                {checkingUpdate ? 'בודק עדכונים...' : 'בדוק עדכונים'}
+                            </Text>
                         </View>
                         <ChevronLeft size={20} color={colors.tabIconDefault} />
                     </TouchableOpacity>

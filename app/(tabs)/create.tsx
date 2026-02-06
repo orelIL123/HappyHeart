@@ -1,8 +1,8 @@
 import { Header } from '@/components/Header';
 import { useColorScheme } from '@/components/useColorScheme';
+import { androidButtonFix, androidTextFix, createShadow, preventFontScaling } from '@/constants/AndroidStyles';
 import Colors from '@/constants/Colors';
-import { createShadow, androidTextFix, preventFontScaling, androidButtonFix } from '@/constants/AndroidStyles';
-import { CITIES, INSTITUTIONS } from '@/constants/MockData';
+import { INSTITUTIONS } from '@/constants/MockData';
 import { useApp } from '@/context/AppContext';
 import { useRouter } from 'expo-router';
 import { ShieldAlert, Trash2 } from 'lucide-react-native';
@@ -41,7 +41,7 @@ export default function CreateActivityScreen() {
         autoDelete: true,
     });
 
-    const handleCreate = () => {
+    const handleCreate = async () => {
         if (!form.location || !form.description || !form.coordinatorName || !form.coordinatorPhone || !form.population) {
             Alert.alert('שגיאה', 'אנא מלא את כל שדות החובה');
             return;
@@ -50,6 +50,17 @@ export default function CreateActivityScreen() {
         const institutionName = form.institution === 'אחר' ? form.customInstitution : form.institution;
         if (form.institution === 'אחר' && !form.customInstitution) {
             Alert.alert('שגיאה', 'אנא הזן שם מוסד');
+            return;
+        }
+
+        // Check if user has permission to create activities
+        if (!currentUser) {
+            Alert.alert('שגיאה', 'יש להתחבר כדי ליצור פעילות');
+            return;
+        }
+
+        if (currentUser.role !== 'organizer' && currentUser.role !== 'admin') {
+            Alert.alert('שגיאה', 'רק רכזים ומנהלים יכולים ליצור פעילויות. אנא פנה למנהל המערכת לשינוי תפקיד.');
             return;
         }
 
@@ -64,25 +75,38 @@ export default function CreateActivityScreen() {
         // Create title from the data
         const title = `${institutionName}${form.department ? ' - ' + form.department : ''} - ${form.population}`;
 
-        createActivity({
-            title: title,
-            institution: institutionName,
-            location: form.location,
-            description: form.description,
-            requiredClowns: parseInt(form.requiredClowns),
-            type: 'one-time',
-            startTime: `${form.date}T${form.startTime}:00Z`,
-            endTime: `${form.date}T${form.endTime}:00Z`,
-            organizerId: currentUser?.id || '2',
-            contactPerson: form.coordinatorName,
-            contactPhone: form.coordinatorPhone,
-            intensity: form.intensity,
-            isUrgent: form.isUrgent,
-            expirationDate,
-        });
+        try {
+            await createActivity({
+                title: title,
+                institution: institutionName,
+                location: form.location,
+                description: form.description,
+                requiredClowns: parseInt(form.requiredClowns),
+                type: 'one-time',
+                startTime: `${form.date}T${form.startTime}:00Z`,
+                endTime: `${form.date}T${form.endTime}:00Z`,
+                organizerId: currentUser.id,
+                contactPerson: form.coordinatorName,
+                contactPhone: form.coordinatorPhone,
+                intensity: form.intensity,
+                isUrgent: form.isUrgent,
+                expirationDate,
+            });
 
-        Alert.alert('הצלחה', 'הפעילות נוצרה בהצלחה!');
-        router.push('/');
+            Alert.alert('הצלחה', 'הפעילות נוצרה בהצלחה!');
+            router.push('/');
+        } catch (error: any) {
+            console.error('Error creating activity:', error);
+            let errorMessage = 'ארעה שגיאה ביצירת הפעילות';
+            
+            if (error?.code === 'permission-denied') {
+                errorMessage = 'אין לך הרשאה ליצור פעילויות. אנא פנה למנהל המערכת.';
+            } else if (error?.message) {
+                errorMessage = error.message;
+            }
+            
+            Alert.alert('שגיאה', errorMessage);
+        }
     };
 
     return (

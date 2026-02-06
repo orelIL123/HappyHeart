@@ -1,13 +1,15 @@
 import { useColorScheme } from '@/components/useColorScheme';
+import { androidTextFix, createShadow, preventFontScaling } from '@/constants/AndroidStyles';
 import Colors from '@/constants/Colors';
-import { createShadow, androidTextFix, preventFontScaling } from '@/constants/AndroidStyles';
 import { Activity } from '@/constants/MockData';
 import { format } from 'date-fns';
 import { he } from 'date-fns/locale';
-import { Activity as ActivityIcon, Building, Calendar as CalendarIcon, Clock, MapPin, Users } from 'lucide-react-native';
+import { Activity as ActivityIcon, Building, Calendar as CalendarIcon, Clock, Heart, MapPin, Users } from 'lucide-react-native';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { useApp } from '@/context/AppContext';
+import { firebaseService } from '@/services/firebaseService';
 import { useRouter } from 'expo-router';
 
 interface ActivityCardProps {
@@ -17,8 +19,13 @@ interface ActivityCardProps {
 
 export const ActivityCard: React.FC<ActivityCardProps> = ({ activity, isJoined }) => {
     const router = useRouter();
+    const { currentUser } = useApp();
     const colorScheme = useColorScheme() ?? 'light';
     const colors = Colors[colorScheme];
+    
+    const likes = activity.likes || [];
+    const isLiked = currentUser ? likes.includes(currentUser.id) : false;
+    const likesCount = likes.length;
 
     const startTime = new Date(activity.startTime);
     const dateStr = format(startTime, 'EEEE, d בMMMM', { locale: he });
@@ -31,6 +38,16 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity, isJoined }
     const intensityLabel = activity.intensity === 'high' ? 'אינטנסיביות גבוהה' :
         activity.intensity === 'medium' ? 'אינטנסיביות בינונית' :
             'אינטנסיביות נמוכה';
+
+    const handleToggleLike = async (e: any) => {
+        e.stopPropagation();
+        if (!currentUser) return;
+        try {
+            await firebaseService.toggleLike(activity.id, currentUser.id);
+        } catch (error) {
+            console.error('Error toggling like:', error);
+        }
+    };
 
     return (
         <TouchableOpacity
@@ -86,6 +103,25 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity, isJoined }
                         {activity.participants.length}/{activity.requiredClowns}
                     </Text>
                 </View>
+                <TouchableOpacity 
+                    style={styles.footerItem}
+                    onPress={handleToggleLike}
+                    disabled={!currentUser}
+                >
+                    <Heart 
+                        size={14} 
+                        color={isLiked ? colors.error : colors.tabIconDefault}
+                        fill={isLiked ? colors.error : 'none'}
+                    />
+                    {likesCount > 0 && (
+                        <Text style={[styles.footerText, { 
+                            color: isLiked ? colors.error : colors.tabIconDefault,
+                            marginRight: 4
+                        }]}>
+                            {likesCount}
+                        </Text>
+                    )}
+                </TouchableOpacity>
             </View>
         </TouchableOpacity>
     );

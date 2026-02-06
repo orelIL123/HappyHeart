@@ -43,7 +43,7 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav({ loaded }: { loaded: boolean }) {
-  const { isAuthenticated, isGuest, currentUser, isLoadingSession } = useApp();
+  const { isAuthenticated, currentUser, isLoadingSession } = useApp();
   const segments = useSegments();
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -139,9 +139,16 @@ function RootLayoutNav({ loaded }: { loaded: boolean }) {
     }
 
     const inAuthGroup = segments[0] === '(auth)';
-    const shouldShowAuth = !isAuthenticated && !isGuest;
+    const shouldShowAuth = !isAuthenticated;
 
-    console.log('Navigation Effect - shouldShowAuth:', shouldShowAuth, 'inAuthGroup:', inAuthGroup, 'currentUser:', currentUser?.name, 'isAuthenticated:', isAuthenticated, 'isGuest:', isGuest);
+    // Allow access to admin-cleanup without authentication
+    const currentPath = segments.join('/');
+    if (currentPath === 'admin-cleanup' || currentPath === 'migrate-users') {
+      console.log('Navigation Effect - Allowing access to admin tool');
+      return;
+    }
+
+    console.log('Navigation Effect - shouldShowAuth:', shouldShowAuth, 'inAuthGroup:', inAuthGroup, 'currentUser:', currentUser?.name, 'isAuthenticated:', isAuthenticated);
 
     if (shouldShowAuth && !inAuthGroup) {
       console.log('Navigating to auth...');
@@ -150,7 +157,7 @@ function RootLayoutNav({ loaded }: { loaded: boolean }) {
       console.log('Navigating to tabs...');
       router.replace('/(tabs)');
     }
-  }, [isAuthenticated, isGuest, isLoadingSession, loaded, segments, currentUser, router]);
+  }, [isAuthenticated, isLoadingSession, loaded, segments, currentUser, router]);
 
   if (!loaded || isLoadingSession) {
     return null;

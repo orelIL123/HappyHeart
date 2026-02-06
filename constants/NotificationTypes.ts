@@ -1,4 +1,4 @@
-export type NotificationType = 'new_activity' | 'activity_update' | 'proximity_alert' | 'reminder' | 'urgent' | 'clown_attendance' | 'regional_activity';
+export type NotificationType = 'new_activity' | 'activity_update' | 'proximity_alert' | 'reminder' | 'urgent' | 'clown_attendance' | 'regional_activity' | 'comment_added' | 'participant_joined';
 
 export interface NotificationPayload {
     id: string;

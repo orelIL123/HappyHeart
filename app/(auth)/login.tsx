@@ -1,6 +1,6 @@
 import { useColorScheme } from '@/components/useColorScheme';
+import { androidButtonFix, androidTextFix, createShadow, preventFontScaling } from '@/constants/AndroidStyles';
 import Colors from '@/constants/Colors';
-import { createShadow, androidTextFix, preventFontScaling, androidButtonFix } from '@/constants/AndroidStyles';
 import { useApp } from '@/context/AppContext';
 import { useRouter } from 'expo-router';
 import { Lock, LogIn, Phone } from 'lucide-react-native';
@@ -9,7 +9,7 @@ import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableO
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function LoginScreen() {
-    const { login, skipAuth } = useApp();
+    const { login } = useApp();
     const colorScheme = useColorScheme() ?? 'light';
     const colors = Colors[colorScheme];
     const router = useRouter();
@@ -26,9 +26,10 @@ export default function LoginScreen() {
                 setTimeout(() => {
                     router.replace('/(tabs)');
                 }, 500);
-            } catch (error) {
+            } catch (error: any) {
                 console.error('Login error:', error);
-                // Error is already handled in login function
+                const errorMessage = error?.message || 'שגיאה בהתחברות. נסה שוב';
+                alert(errorMessage);
             }
         } else {
             console.warn('Missing phone/email or password');
@@ -38,15 +39,6 @@ export default function LoginScreen() {
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-            <View style={styles.topActions}>
-                <TouchableOpacity
-                    style={[styles.skipButtonContainer, { borderColor: colors.border }]}
-                    onPress={skipAuth}
-                >
-                    <Text style={[styles.skipButtonText, { color: colors.tabIconDefault }]}>דלג</Text>
-                </TouchableOpacity>
-            </View>
-
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 style={styles.content}
@@ -101,16 +93,12 @@ export default function LoginScreen() {
                         <Text style={[styles.registerLinkText, { color: colors.primary }]}>צור חשבון חדש</Text>
                     </TouchableOpacity>
 
+                    {/* Admin cleanup link - hidden but accessible */}
                     <TouchableOpacity
-                        style={[styles.registerLink, { marginTop: 15 }]}
-                        onPress={() => {
-                            skipAuth();
-                            setTimeout(() => {
-                                router.replace('/(tabs)');
-                            }, 100);
-                        }}
+                        style={[styles.registerLink, { marginTop: 30 }]}
+                        onPress={() => router.push('/admin-cleanup')}
                     >
-                        <Text style={[styles.registerLinkText, { color: colors.tabIconDefault, fontWeight: 'normal' }]}>המשך ללא התחברות</Text>
+                        <Text style={[styles.registerLinkText, { color: colors.tabIconDefault, fontSize: 12 }]}>🔧 ניקוי מערכת</Text>
                     </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
@@ -127,11 +115,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 30,
         justifyContent: 'center',
         marginTop: -50,
-    },
-    topActions: {
-        paddingHorizontal: 20,
-        paddingTop: 10,
-        alignItems: 'flex-start',
     },
     header: {
         alignItems: 'center',
@@ -200,25 +183,6 @@ const styles = StyleSheet.create({
     registerLinkText: {
         fontSize: 14,
         fontWeight: 'bold',
-        ...androidTextFix,
-        ...preventFontScaling,
-    },
-    footer: {
-        position: 'absolute',
-        bottom: 50,
-        left: 0,
-        right: 0,
-        alignItems: 'center',
-    },
-    skipButtonContainer: {
-        paddingVertical: 8,
-        paddingHorizontal: 15,
-        borderRadius: 20,
-        borderWidth: 1,
-    },
-    skipButtonText: {
-        fontSize: 14,
-        fontWeight: '600',
         ...androidTextFix,
         ...preventFontScaling,
     },

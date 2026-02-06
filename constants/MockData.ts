@@ -32,6 +32,17 @@ export interface Activity {
     intensity?: 'low' | 'medium' | 'high';
     isUrgent?: boolean;
     expirationDate?: string;
+    likes?: string[]; // User IDs who liked this activity
+}
+
+export interface Comment {
+    id: string;
+    activityId: string;
+    userId: string;
+    userName: string;
+    userAvatar: string;
+    text: string;
+    createdAt: string;
 }
 
 export const MOCK_USERS: User[] = [
