@@ -54,6 +54,17 @@ export const firebaseService = {
         });
     },
 
+    uploadActivityImage: async (activityId: string, uri: string): Promise<string> => {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        const storageRef = ref(storage, `activity_images/${activityId}`);
+        await uploadBytes(storageRef, blob);
+        const downloadURL = await getDownloadURL(storageRef);
+        const activityRef = doc(db, 'activities', activityId);
+        await updateDoc(activityRef, { imageUrl: downloadURL });
+        return downloadURL;
+    },
+
     joinActivity: async (activityId: string, userId: string) => {
         const activityRef = doc(db, 'activities', activityId);
         return await updateDoc(activityRef, {
@@ -100,49 +111,21 @@ export const firebaseService = {
 
     getUserByPhoneAndPassword: async (phone: string, password: string): Promise<User | null> => {
         try {
-            // First, find user in Firestore by phone
-            const q = query(
-                collection(db, 'users'),
-                where('phone', '==', phone),
-                where('approvalStatus', '==', 'approved')
-            );
-            const snapshot = await getDocs(q);
-            if (!snapshot.empty) {
-                const userDoc = snapshot.docs[0];
-                const userData = userDoc.data();
-                
-                // Get email from user data (should be stored when user is created or linked)
-                const email = userData.email;
-                if (!email) {
-                    console.warn('User found but no email stored. User may need to be linked to Auth.');
-                    // Try to generate email from phone (for backward compatibility)
-                    const generatedEmail = `${phone.replace(/\D/g, '')}@happyhart.app`;
-                    try {
-                        await signInWithEmailAndPassword(auth, generatedEmail, password);
-                        // Update user with email for next time
-                        const userRef = doc(db, 'users', userDoc.id);
-                        await updateDoc(userRef, { email: generatedEmail });
-                        return { id: userDoc.id, ...userData, email: generatedEmail } as User;
-                    } catch (authError: any) {
-                        console.error('Firebase Auth sign in error with generated email:', authError);
-                        return null;
-                    }
-                }
-                
-                // Try to sign in with Firebase Auth
-                try {
-                    await signInWithEmailAndPassword(auth, email, password);
-                    return { id: userDoc.id, ...userData } as User;
-                } catch (authError: any) {
-                    console.error('Firebase Auth sign in error:', authError);
-                    // If auth fails, return null
-                    return null;
-                }
+            // Normalize phone to digits only (0501234567 or 050-1234567 -> 0501234567)
+            const phoneDigits = phone.replace(/\D/g, '');
+            if (phoneDigits.length < 9) {
+                return null;
             }
-            return null;
-        } catch (error) {
-            console.error('Error getting user by phone and password:', error);
-            return null;
+            const phoneNormalized = phoneDigits.startsWith('0') ? phoneDigits : '0' + phoneDigits;
+            const email = `${phoneNormalized}@happyhart.app`;
+
+            // Sign in with Firebase Auth only - no Firestore query before login (rules block unauthenticated read)
+            await signInWithEmailAndPassword(auth, email, password);
+            // Auth state listener in AppContext will load user from Firestore (users/auth.uid)
+            return { id: '', name: '', role: 'clown', avatar: '', preferredArea: '', email } as User;
+        } catch (error: any) {
+            console.error('Login by phone error:', error?.code, error?.message);
+            throw error;
         }
     },
 

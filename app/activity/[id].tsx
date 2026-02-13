@@ -6,10 +6,11 @@ import { firebaseService } from '@/services/firebaseService';
 import { pushNotificationService } from '@/services/pushNotificationService';
 import { format } from 'date-fns';
 import { he } from 'date-fns/locale';
+import * as ImagePicker from 'expo-image-picker';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { AlertTriangle, Building, Calendar as CalendarIcon, Clock, Heart, MapPin, MessageCircle, Phone as PhoneIcon, Send, Share2, MessageCircle as WhatsAppIcon } from 'lucide-react-native';
+import { AlertTriangle, Building, Calendar as CalendarIcon, Clock, Heart, ImagePlus, MapPin, MessageCircle, Phone as PhoneIcon, Send, Share2, MessageCircle as WhatsAppIcon } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { Alert, Image, Linking, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function ActivityDetailsScreen() {
     const { id } = useLocalSearchParams();
@@ -23,6 +24,7 @@ export default function ActivityDetailsScreen() {
     const [comments, setComments] = useState<Comment[]>([]);
     const [newComment, setNewComment] = useState('');
     const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+    const [isUpdatingImage, setIsUpdatingImage] = useState(false);
 
     const activity = activities.find(a => a.id === id);
     
@@ -110,6 +112,31 @@ export default function ActivityDetailsScreen() {
     const handleCall = (phone?: string) => {
         if (!phone) return;
         Linking.openURL(`tel:${phone}`);
+    };
+
+    const handleChangeActivityImage = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('הרשאה נדרשת', 'נדרשת גישה לגלריה להחלפת תמונה.');
+            return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [16, 9],
+            quality: 0.8,
+        });
+        if (result.canceled || !result.assets?.[0]) return;
+        setIsUpdatingImage(true);
+        try {
+            await firebaseService.uploadActivityImage(activity.id, result.assets[0].uri);
+            Alert.alert('הצלחה', 'תמונת הפעילות עודכנה');
+        } catch (err) {
+            console.error('Error updating activity image:', err);
+            Alert.alert('שגיאה', 'לא ניתן היה לעדכן את התמונה');
+        } finally {
+            setIsUpdatingImage(false);
+        }
     };
 
     const handleToggleLike = async () => {
@@ -247,10 +274,24 @@ export default function ActivityDetailsScreen() {
             />
 
             <View style={[styles.imageHeader, { backgroundColor: colors.primary + '20' }]}>
-                <Image
-                    source={{ uri: 'https://images.unsplash.com/photo-1509248961158-e54f6934749c?q=80&w=2076&auto=format&fit=crop' }}
-                    style={[styles.headerImage, { opacity: 0.3 }]}
-                />
+                {activity.imageUrl ? (
+                    <Image source={{ uri: activity.imageUrl }} style={styles.headerImage} resizeMode="cover" />
+                ) : (
+                    <Image
+                        source={{ uri: 'https://images.unsplash.com/photo-1509248961158-e54f6934749c?q=80&w=2076&auto=format&fit=crop' }}
+                        style={[styles.headerImage, { opacity: 0.3 }]}
+                    />
+                )}
+                {(currentUser?.role === 'organizer' || currentUser?.role === 'admin') && (
+                    <TouchableOpacity
+                        style={[styles.changeImageButton, { backgroundColor: 'rgba(0,0,0,0.5)' }]}
+                        onPress={handleChangeActivityImage}
+                        disabled={isUpdatingImage}
+                    >
+                        {isUpdatingImage ? <ActivityIndicator color="#fff" size="small" /> : <ImagePlus size={20} color="#fff" />}
+                        <Text style={styles.changeImageButtonText}>החלף תמונה</Text>
+                    </TouchableOpacity>
+                )}
                 <View style={styles.headerContent}>
                     <Text style={[styles.title, { color: colors.text }]}>{activity.title}</Text>
                     <View style={styles.badgeRow}>
@@ -507,9 +548,26 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
         padding: 24,
         position: 'relative',
+        overflow: 'hidden',
     },
     headerImage: {
         ...StyleSheet.absoluteFillObject,
+    },
+    changeImageButton: {
+        position: 'absolute',
+        bottom: 16,
+        left: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 12,
+        gap: 6,
+    },
+    changeImageButtonText: {
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '600',
     },
     headerContent: {
         zIndex: 1,

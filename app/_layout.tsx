@@ -6,6 +6,7 @@ import * as Updates from 'expo-updates';
 import { useEffect, useState } from 'react';
 import { Alert, Platform } from 'react-native';
 import 'react-native-reanimated';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { NotificationCenter } from '@/components/NotificationCenter';
 import { Sidebar } from '@/components/Sidebar';
@@ -14,8 +15,8 @@ import MyColors from '@/constants/Colors';
 import { AppProvider, useApp } from '@/context/AppContext';
 
 export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary
+    // Catch any errors thrown by the Layout component.
+    ErrorBoundary
 } from 'expo-router';
 
 export const unstable_settings = {
@@ -36,9 +37,11 @@ export default function RootLayout() {
   }, [error]);
 
   return (
-    <AppProvider>
-      <RootLayoutNav loaded={loaded} />
-    </AppProvider>
+    <SafeAreaProvider>
+      <AppProvider>
+        <RootLayoutNav loaded={loaded} />
+      </AppProvider>
+    </SafeAreaProvider>
   );
 }
 

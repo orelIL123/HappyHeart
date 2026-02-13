@@ -4,17 +4,19 @@
  */
 
 import { useColorScheme } from '@/components/useColorScheme';
+import { auth, db } from '@/config/firebaseConfig';
 import Colors from '@/constants/Colors';
-import { db, auth } from '@/config/firebaseConfig';
-import { collection, getDocs, doc, deleteDoc, setDoc } from 'firebase/firestore';
+import { useRouter } from 'expo-router';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { collection, deleteDoc, doc, getDocs, setDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function AdminCleanupScreen() {
     const colorScheme = useColorScheme() ?? 'light';
     const colors = Colors[colorScheme];
+    const router = useRouter();
     const [working, setWorking] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
 
@@ -124,6 +126,13 @@ export default function AdminCleanupScreen() {
                     )}
                 </TouchableOpacity>
 
+                <TouchableOpacity
+                    style={[styles.linkButton, { borderColor: colors.border }]}
+                    onPress={() => router.replace('/(auth)/login')}
+                >
+                    <Text style={[styles.linkButtonText, { color: colors.primary }]}>חזרה להתחברות</Text>
+                </TouchableOpacity>
+
                 <ScrollView
                     style={[styles.logContainer, { backgroundColor: colors.card, borderColor: colors.border }]}
                     contentContainerStyle={styles.logContent}
@@ -175,6 +184,18 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 18,
         fontWeight: 'bold',
+    },
+    linkButton: {
+        paddingVertical: 12,
+        paddingHorizontal: 20,
+        borderWidth: 1,
+        borderRadius: 12,
+        marginBottom: 16,
+        alignItems: 'center',
+    },
+    linkButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
     },
     logContainer: {
         flex: 1,

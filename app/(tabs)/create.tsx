@@ -4,10 +4,12 @@ import { androidButtonFix, androidTextFix, createShadow, preventFontScaling } fr
 import Colors from '@/constants/Colors';
 import { INSTITUTIONS } from '@/constants/MockData';
 import { useApp } from '@/context/AppContext';
+import { firebaseService } from '@/services/firebaseService';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { ShieldAlert, Trash2 } from 'lucide-react-native';
+import { ImagePlus, ShieldAlert, Trash2 } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function CreateActivityScreen() {
     const { createActivity, currentUser } = useApp();
@@ -40,6 +42,24 @@ export default function CreateActivityScreen() {
         isUrgent: false,
         autoDelete: true,
     });
+    const [activityImageUri, setActivityImageUri] = useState<string | null>(null);
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handlePickActivityImage = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('הרשאה נדרשת', 'נדרשת גישה לגלריה להעלאת תמונה.');
+            return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [16, 9],
+            quality: 0.8,
+        });
+        if (!result.canceled && result.assets?.[0]) setActivityImageUri(result.assets[0].uri);
+    };
 
     const handleCreate = async () => {
         if (!form.location || !form.description || !form.coordinatorName || !form.coordinatorPhone || !form.population) {
@@ -75,8 +95,9 @@ export default function CreateActivityScreen() {
         // Create title from the data
         const title = `${institutionName}${form.department ? ' - ' + form.department : ''} - ${form.population}`;
 
+        setIsSubmitting(true);
         try {
-            await createActivity({
+            const activityId = await createActivity({
                 title: title,
                 institution: institutionName,
                 location: form.location,
@@ -93,9 +114,22 @@ export default function CreateActivityScreen() {
                 expirationDate,
             });
 
+            if (activityImageUri) {
+                setUploadingImage(true);
+                try {
+                    await firebaseService.uploadActivityImage(activityId, activityImageUri);
+                } catch (imgErr) {
+                    console.error('Error uploading activity image:', imgErr);
+                    Alert.alert('הפעילות נוצרה', 'הפעילות נשמרה אך העלאת התמונה נכשלה.');
+                } finally {
+                    setUploadingImage(false);
+                }
+            }
+            setIsSubmitting(false);
             Alert.alert('הצלחה', 'הפעילות נוצרה בהצלחה!');
             router.push('/');
         } catch (error: any) {
+            setIsSubmitting(false);
             console.error('Error creating activity:', error);
             let errorMessage = 'ארעה שגיאה ביצירת הפעילות';
             
@@ -111,7 +145,7 @@ export default function CreateActivityScreen() {
 
     return (
         <View style={{ flex: 1, backgroundColor: colors.background }}>
-            <Header title="יצירת פעילות" />
+            <Header title="יצירת פעילות" showBackButton={false} />
             <ScrollView style={styles.container}>
                 <View style={styles.form}>
                     <Text style={[styles.label, { color: colors.text }]}>מיקום *</Text>
@@ -319,11 +353,39 @@ export default function CreateActivityScreen() {
                         textAlign="right"
                     />
 
+                    <Text style={[styles.label, { color: colors.text }]}>תמונת פעילות (לא חובה)</Text>
                     <TouchableOpacity
-                        style={[styles.submitButton, { backgroundColor: colors.primary }]}
-                        onPress={handleCreate}
+                        style={[styles.imagePickerBox, { backgroundColor: colors.card, borderColor: colors.border }]}
+                        onPress={handlePickActivityImage}
+                        disabled={uploadingImage}
                     >
-                        <Text style={styles.submitButtonText}>פרסם פעילות</Text>
+                        {activityImageUri ? (
+                            <>
+                                <Image source={{ uri: activityImageUri }} style={styles.pickedImage} resizeMode="cover" />
+                                {uploadingImage && (
+                                    <View style={[StyleSheet.absoluteFill, styles.imageUploadOverlay]}>
+                                        <ActivityIndicator color="#fff" />
+                                    </View>
+                                )}
+                            </>
+                        ) : (
+                            <View style={styles.imagePickerPlaceholder}>
+                                <ImagePlus size={36} color={colors.tabIconDefault} />
+                                <Text style={[styles.imagePickerText, { color: colors.tabIconDefault }]}>לחץ להוספת תמונה</Text>
+                            </View>
+                        )}
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[styles.submitButton, { backgroundColor: colors.primary }, (isSubmitting || uploadingImage) && { opacity: 0.7 }]}
+                        onPress={handleCreate}
+                        disabled={isSubmitting || uploadingImage}
+                    >
+                        {(isSubmitting || uploadingImage) ? (
+                            <ActivityIndicator color="#fff" />
+                        ) : (
+                            <Text style={styles.submitButtonText}>פרסם פעילות</Text>
+                        )}
                     </TouchableOpacity>
                 </View >
             </ScrollView >
@@ -469,6 +531,34 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         textAlign: 'right',
         lineHeight: 18,
+        ...androidTextFix,
+        ...preventFontScaling,
+    },
+    imagePickerBox: {
+        width: '100%',
+        height: 160,
+        borderRadius: 16,
+        borderWidth: 1,
+        overflow: 'hidden',
+        marginTop: 8,
+    },
+    pickedImage: {
+        width: '100%',
+        height: '100%',
+    },
+    imageUploadOverlay: {
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    imagePickerPlaceholder: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    imagePickerText: {
+        marginTop: 8,
+        fontSize: 14,
         ...androidTextFix,
         ...preventFontScaling,
     },

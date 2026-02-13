@@ -1,207 +1,344 @@
-import { ActivityCard } from '@/components/ActivityCard';
 import { Header } from '@/components/Header';
-import { TopTabs } from '@/components/TopTabs';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { useApp } from '@/context/AppContext';
 import { useRouter } from 'expo-router';
-import { Activity as ActivityIcon, Calendar, Search } from 'lucide-react-native';
-import React, { useState } from 'react';
-import { FlatList, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Activity as ActivityIcon, Calendar, Heart, Users } from 'lucide-react-native';
+import React from 'react';
+import {
+    Dimensions,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 
-export default function ActivityBoardScreen() {
+const { width } = Dimensions.get('window');
+
+// Fallback for bottom safe area (home indicator on iOS)
+const BOTTOM_INSET = Platform.OS === 'ios' ? 34 : 0;
+
+export default function HomeScreen() {
   const { activities, currentUser } = useApp();
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
   const router = useRouter();
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCity, setSelectedCity] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'all' | 'mine'>('all');
+  // Stats
+  const thisWeekStart = new Date();
+  thisWeekStart.setDate(thisWeekStart.getDate() - 7);
 
-  const filteredActivities = activities.filter(activity => {
-    const matchesSearch = activity.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      activity.institution.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCity = !selectedCity || activity.location === selectedCity;
-    const matchesMine = activeTab === 'all' || (currentUser && (activity.participants.includes(currentUser.id) || activity.organizerId === currentUser.id));
-    return matchesSearch && matchesCity && matchesMine;
-  });
+  const weeklySmiles = activities.reduce((acc, a) => acc + a.participants.length, 0);
+  const monthlyActivities = activities.filter(a => {
+    const d = new Date(a.startTime);
+    const now = new Date();
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
 
-  const cities = Array.from(new Set(activities.map(a => a.location)));
+  // Count unique active clowns
+  const activeClowns = new Set(activities.flatMap(a => a.participants)).size;
 
-  const tabs = [
-    { id: 'all', label: 'כל הפעילויות' },
-    { id: 'mine', label: 'הפעילויות שלי' },
-  ];
+  const isDark = colorScheme === 'dark';
+  const bgGradientColor = isDark ? '#1a0a2e' : '#FDF0F8';
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Header title="לוח אירועים" showBackButton={false} />
-
-      <View style={styles.searchSection}>
-        <View style={[styles.searchContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Search size={20} color={colors.tabIconDefault} />
-          <TextInput
-            style={[styles.searchInput, { color: colors.text }]}
-            placeholder="חיפוש פעילות או מוסד..."
-            placeholderTextColor={colors.tabIconDefault}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            textAlign="right"
-          />
-        </View>
-      </View>
-
-      <TopTabs
-        tabs={tabs}
-        activeTab={activeTab}
-        onTabPress={(id) => setActiveTab(id as 'all' | 'mine')}
-      />
-
-      <View style={styles.quickActions}>
-        <TouchableOpacity
-          style={[styles.actionButton, { backgroundColor: colors.primary }]}
-          onPress={() => router.push('/availability')}
-        >
-          <Calendar size={20} color="#fff" />
-          <Text style={styles.actionButtonText}>עדכון זמינות</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionButton, { backgroundColor: colors.playful }]}
-          onPress={() => router.push('/create')}
-        >
-          <ActivityIcon size={20} color="#fff" />
-          <Text style={styles.actionButtonText}>יצירת פעילות</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.cityFilterSection}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-          <TouchableOpacity
-            style={[
-              styles.filterChip,
-              !selectedCity && { backgroundColor: colors.primary, borderColor: colors.primary },
-              { borderColor: colors.border }
-            ]}
-            onPress={() => setSelectedCity(null)}
-          >
-            <Text style={[styles.filterText, !selectedCity ? { color: '#fff' } : { color: colors.tabIconDefault }]}>הכל</Text>
-          </TouchableOpacity>
-          {cities.map(city => (
-            <TouchableOpacity
-              key={city}
-              style={[
-                styles.filterChip,
-                selectedCity === city && { backgroundColor: colors.primary, borderColor: colors.primary },
-                { borderColor: colors.border }
-              ]}
-              onPress={() => setSelectedCity(city)}
-            >
-              <Text style={[styles.filterText, selectedCity === city ? { color: '#fff' } : { color: colors.tabIconDefault }]}>{city}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      <FlatList
-        data={filteredActivities}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <ActivityCard
-            activity={item}
-            isJoined={currentUser ? item.participants.includes(currentUser.id) : false}
-          />
-        )}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={[styles.emptyText, { color: colors.tabIconDefault }]}>לא נמצאו פעילויות מתאימות</Text>
+    <View style={[styles.container, { backgroundColor: bgGradientColor }]}>
+      <Header title="שמחת הלב" showBackButton={false} />
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingTop: 10, paddingBottom: BOTTOM_INSET + 100 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Hero Section */}
+        <View style={styles.heroSection}>
+          {/* Decorative hearts */}
+          <View style={styles.decoHeartTopRight}>
+            <Text style={styles.decoHeartText}>✦</Text>
           </View>
-        }
-      />
+          <View style={styles.decoHeartBottomLeft}>
+            <Heart size={28} color={colors.playful} strokeWidth={1.5} style={{ opacity: 0.35 }} />
+          </View>
+
+          {/* Main heart logo */}
+          <View style={styles.logoContainer}>
+            <View style={[styles.logoCircle, { backgroundColor: colors.playful }]}>
+              <Heart size={36} color="#fff" fill="#fff" />
+            </View>
+          </View>
+
+          <Text style={[styles.appName, { color: colors.primary }]}>
+            שמחת הלב
+          </Text>
+
+          <Text style={[styles.subtitle, { color: colors.secondary }]}>
+            🎪 הקהילה של הליצנים הרפואיים
+          </Text>
+
+          <Text style={[styles.tagline, { color: colors.tabIconDefault }]}>
+            מקום שבו אנחנו יוצרים חיוכים ומפיצים שמחה
+          </Text>
+        </View>
+
+        {/* Quick Action Buttons */}
+        <View style={styles.actionsContainer}>
+          {/* Join Community → Profile */}
+          <TouchableOpacity
+            style={[styles.actionBtn, { backgroundColor: colors.accent }]}
+            onPress={() => router.push('/(tabs)/profile')}
+            activeOpacity={0.85}
+          >
+            <Users size={20} color="#fff" style={styles.actionIcon} />
+            <Text style={styles.actionBtnText}>הצטרף לקהילה</Text>
+          </TouchableOpacity>
+
+          {/* Availability */}
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.actionBtnMiddle, { backgroundColor: colors.secondary }]}
+            onPress={() => router.push('/(tabs)/availability')}
+            activeOpacity={0.85}
+          >
+            <Calendar size={20} color="#fff" style={styles.actionIcon} />
+            <Text style={styles.actionBtnText}>זמינות</Text>
+          </TouchableOpacity>
+
+          {/* Activity Board */}
+          <TouchableOpacity
+            style={[styles.actionBtn, { backgroundColor: colors.primary }]}
+            onPress={() => router.push('/(tabs)/board')}
+            activeOpacity={0.85}
+          >
+            <ActivityIcon size={20} color="#fff" style={styles.actionIcon} />
+            <Text style={styles.actionBtnText}>לוח פעילויות</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Stats Cards */}
+        <View style={styles.statsContainer}>
+          {/* Smiles this week */}
+          <View style={[styles.statCard, { backgroundColor: colors.card }]}>
+            <View style={[styles.statIconCircle, { backgroundColor: colors.secondary + '22' }]}>
+              <Heart size={24} color={colors.secondary} fill={colors.secondary} />
+            </View>
+            <Text style={[styles.statNumber, { color: colors.text }]}>
+              {weeklySmiles.toLocaleString()}
+            </Text>
+            <Text style={[styles.statLabel, { color: colors.tabIconDefault }]}>
+              חיוכים השבוע
+            </Text>
+          </View>
+
+          {/* Monthly activities */}
+          <View style={[styles.statCard, { backgroundColor: colors.card }]}>
+            <View style={[styles.statIconCircle, { backgroundColor: colors.playful + '22' }]}>
+              <Calendar size={24} color={colors.playful} />
+            </View>
+            <Text style={[styles.statNumber, { color: colors.text }]}>
+              {monthlyActivities}
+            </Text>
+            <Text style={[styles.statLabel, { color: colors.tabIconDefault }]}>
+              פעילויות החודש
+            </Text>
+          </View>
+
+          {/* Active clowns */}
+          <View style={[styles.statCard, { backgroundColor: colors.card }]}>
+            <View style={[styles.statIconCircle, { backgroundColor: colors.primary + '22' }]}>
+              <Users size={24} color={colors.primary} />
+            </View>
+            <Text style={[styles.statNumber, { color: colors.text }]}>
+              {activeClowns}
+            </Text>
+            <Text style={[styles.statLabel, { color: colors.tabIconDefault }]}>
+              ליצנים פעילים
+            </Text>
+          </View>
+        </View>
+
+        {/* Welcome message for logged in user */}
+        {currentUser && (
+          <View style={[styles.welcomeCard, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' }]}>
+            <Text style={[styles.welcomeText, { color: colors.primary }]}>
+              ✨ שלום, {currentUser.name}!
+            </Text>
+            <Text style={[styles.welcomeSub, { color: colors.tabIconDefault }]}>
+              {currentUser.role === 'clown' ? 'מוכן להפיץ שמחה היום?' :
+               currentUser.role === 'organizer' ? 'יש פעילויות חדשות לתאם?' :
+               'בדוק את לוח הניהול'}
+            </Text>
+          </View>
+        )}
+      </ScrollView>
     </View>
   );
 }
+
+const CARD_WIDTH = (width - 60) / 3;
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  searchSection: {
+  scrollContent: {
     paddingHorizontal: 20,
-    paddingVertical: 15,
-  },
-  searchContainer: {
-    flexDirection: 'row-reverse',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    height: 50,
-    borderRadius: 15,
-    borderWidth: 1,
   },
-  searchInput: {
-    flex: 1,
-    marginRight: 10,
-    fontSize: 16,
+
+  // Hero
+  heroSection: {
+    alignItems: 'center',
+    paddingVertical: 20,
+    width: '100%',
+    position: 'relative',
+  },
+  decoHeartTopRight: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+  },
+  decoHeartText: {
+    fontSize: 28,
+    color: '#F0C040',
+    opacity: 0.7,
+  },
+  decoHeartBottomLeft: {
+    position: 'absolute',
+    bottom: 20,
+    right: 10,
+  },
+  logoContainer: {
+    marginBottom: 16,
+  },
+  logoCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#EC4899',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  appName: {
+    fontSize: 38,
+    fontWeight: '900',
     fontFamily: 'Inter',
+    textAlign: 'center',
+    marginBottom: 8,
+    letterSpacing: -1,
   },
-  cityFilterSection: {
-    marginVertical: 10,
+  subtitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    fontFamily: 'Inter',
+    textAlign: 'center',
+    marginBottom: 6,
   },
-  quickActions: {
+  tagline: {
+    fontSize: 14,
+    fontFamily: 'Inter',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+
+  // Action buttons
+  actionsContainer: {
     flexDirection: 'row-reverse',
-    paddingHorizontal: 20,
-    marginTop: 15,
-    marginBottom: 5,
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 28,
+    width: '100%',
+    flexWrap: 'wrap',
   },
-  actionButton: {
-    flex: 1,
+  actionBtn: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 15,
-    marginLeft: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    borderRadius: 50,
+    minWidth: 100,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.15,
     shadowRadius: 8,
-    elevation: 3,
+    elevation: 4,
   },
-  actionButtonText: {
+  actionBtnMiddle: {
+    // slightly wider for middle button
+    paddingHorizontal: 22,
+  },
+  actionIcon: {
+    marginLeft: 6,
+  },
+  actionBtnText: {
     color: '#fff',
     fontWeight: '800',
-    marginRight: 8,
+    fontSize: 14,
+    fontFamily: 'Inter',
+  },
+
+  // Stats
+  statsContainer: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    marginTop: 32,
+    width: '100%',
+    gap: 10,
+  },
+  statCard: {
+    width: CARD_WIDTH,
+    borderRadius: 20,
+    padding: 14,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  statIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  statNumber: {
+    fontSize: 22,
+    fontWeight: '900',
+    fontFamily: 'Inter',
+    textAlign: 'center',
+  },
+  statLabel: {
+    fontSize: 11,
+    fontFamily: 'Inter',
+    textAlign: 'center',
+    marginTop: 2,
+    fontWeight: '600',
+  },
+
+  // Welcome card
+  welcomeCard: {
+    width: '100%',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 24,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  welcomeText: {
+    fontSize: 16,
+    fontWeight: '800',
+    fontFamily: 'Inter',
+    marginBottom: 4,
+  },
+  welcomeSub: {
     fontSize: 13,
     fontFamily: 'Inter',
-  },
-  filterScroll: {
-    paddingHorizontal: 20,
-    flexDirection: 'row-reverse',
-  },
-  filterChip: {
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginLeft: 10,
-  },
-  filterText: {
-    fontSize: 14,
-    fontWeight: '700',
-    fontFamily: 'Inter',
-  },
-  listContent: {
-    padding: 20,
-    paddingTop: 10,
-    paddingBottom: 100,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    marginTop: 50,
-  },
-  emptyText: {
-    fontSize: 16,
-    fontFamily: 'Inter',
+    textAlign: 'center',
   },
 });

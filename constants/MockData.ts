@@ -33,6 +33,7 @@ export interface Activity {
     isUrgent?: boolean;
     expirationDate?: string;
     likes?: string[]; // User IDs who liked this activity
+    imageUrl?: string; // Optional activity image
 }
 
 export interface Comment {

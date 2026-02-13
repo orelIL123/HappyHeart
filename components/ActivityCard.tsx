@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import { he } from 'date-fns/locale';
 import { Activity as ActivityIcon, Building, Calendar as CalendarIcon, Clock, Heart, MapPin, Users } from 'lucide-react-native';
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { useApp } from '@/context/AppContext';
 import { firebaseService } from '@/services/firebaseService';
@@ -55,6 +55,9 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity, isJoined }
             onPress={() => router.push(`/activity/${activity.id}`)}
             style={[styles.container, { backgroundColor: colors.card, borderColor: colors.border }]}
         >
+            {activity.imageUrl ? (
+                <Image source={{ uri: activity.imageUrl }} style={styles.cardImage} resizeMode="cover" />
+            ) : null}
             <View style={styles.header}>
                 <View style={styles.titleContainer}>
                     <Text style={[styles.title, { color: colors.text }]}>{activity.title}</Text>
@@ -133,7 +136,15 @@ const styles = StyleSheet.create({
         padding: 20,
         marginBottom: 20,
         borderWidth: 1,
+        overflow: 'hidden',
         ...createShadow(5),
+    },
+    cardImage: {
+        width: '100%',
+        height: 120,
+        marginHorizontal: -20,
+        marginTop: -20,
+        marginBottom: 12,
     },
     header: {
         flexDirection: 'row-reverse',

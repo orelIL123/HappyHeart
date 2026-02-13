@@ -18,22 +18,22 @@ export default function LoginScreen() {
     const [password, setPassword] = useState('');
 
     const handleLogin = async () => {
-        console.log('Login attempt:', phoneOrEmail, password);
-        if (phoneOrEmail && password) {
-            try {
-                await login(phoneOrEmail, password);
+        const trimmedInput = (phoneOrEmail || '').trim();
+        const trimmedPassword = (password || '').trim();
+        if (!trimmedInput || !trimmedPassword) {
+            alert('אנא מלא מספר טלפון או אימייל וסיסמה');
+            return;
+        }
+        try {
+            await login(trimmedInput, trimmedPassword);
                 // Wait a bit for auth state to update, then navigate
-                setTimeout(() => {
-                    router.replace('/(tabs)');
-                }, 500);
-            } catch (error: any) {
-                console.error('Login error:', error);
-                const errorMessage = error?.message || 'שגיאה בהתחברות. נסה שוב';
-                alert(errorMessage);
-            }
-        } else {
-            console.warn('Missing phone/email or password');
-            alert('אנא מלא את כל השדות');
+            setTimeout(() => {
+                router.replace('/(tabs)');
+            }, 500);
+        } catch (error: any) {
+            console.error('Login error:', error);
+            const errorMessage = error?.message || 'שם משתמש או סיסמה שגויים. נסה שוב.';
+            alert(errorMessage);
         }
     };
 

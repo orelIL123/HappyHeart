@@ -24,7 +24,7 @@ export default function AvailabilityScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <Header title="זמינות" />
+      <Header title="זמינות" showBackButton={false} />
       <ScrollView style={styles.container}>
         <View style={styles.content}>
           <View style={[styles.statusCard, { backgroundColor: isAvailable ? colors.success + '15' : colors.card, borderColor: isAvailable ? colors.success : colors.border }]}>

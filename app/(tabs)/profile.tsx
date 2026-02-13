@@ -8,10 +8,10 @@ import { useApp } from '@/context/AppContext';
 import { firebaseService } from '@/services/firebaseService';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { Award, Calendar, ChevronLeft, Info, LogOut, PlusCircle, Users, RefreshCw } from 'lucide-react-native';
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View, Platform } from 'react-native';
 import * as Updates from 'expo-updates';
+import { Award, Bell, Calendar, ChevronLeft, Info, LogOut, PlusCircle, RefreshCw, Users } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function ProfileScreen() {
     const { currentUser, logout, approveClown, rejectClown, isLoadingSession, updateUserProfile, activities } = useApp();
@@ -191,7 +191,7 @@ export default function ProfileScreen() {
 
     return (
         <View style={{ flex: 1, backgroundColor: colors.background }}>
-            <Header title="פרופיל" />
+            <Header title="פרופיל" showBackButton={false} />
             <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
                 <View style={styles.header}>
                     <TouchableOpacity
@@ -209,6 +209,7 @@ export default function ProfileScreen() {
                             <Award size={14} color="#fff" />
                         </View>
                     </TouchableOpacity>
+                    <Text style={[styles.changePhotoHint, { color: colors.tabIconDefault }]}>לחץ להחלפת תמונה</Text>
                     <Text style={[styles.name, { color: colors.text }]}>{currentUser.name}</Text>
                     <View style={[styles.roleTag, { backgroundColor: colors.primary + '15' }]}>
                         <Text style={[styles.roleTagText, { color: colors.primary }]}>
@@ -279,15 +280,28 @@ export default function ProfileScreen() {
 
                     <TouchableOpacity
                         style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 12 }]}
+                        onPress={() => router.push('/(tabs)/settings')}
+                    >
+                        <View style={styles.menuItemContent}>
+                            <View style={[styles.menuIconContainer, { backgroundColor: colors.primary + '15' }]}>
+                                <Bell size={20} color={colors.primary} />
+                            </View>
+                            <Text style={[styles.menuItemText, { color: colors.text }]}>הגדרות התראות</Text>
+                        </View>
+                        <ChevronLeft size={20} color={colors.tabIconDefault} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 12 }]}
                         onPress={handleCheckForUpdates}
                         disabled={checkingUpdate}
                     >
                         <View style={styles.menuItemContent}>
-                            <View style={[styles.menuIconContainer, { backgroundColor: colors.primary + '15' }]}>
+                            <View style={[styles.menuIconContainer, { backgroundColor: colors.secondary + '15' }]}>
                                 {checkingUpdate ? (
-                                    <ActivityIndicator size="small" color={colors.primary} />
+                                    <ActivityIndicator size="small" color={colors.secondary} />
                                 ) : (
-                                    <RefreshCw size={20} color={colors.primary} />
+                                    <RefreshCw size={20} color={colors.secondary} />
                                 )}
                             </View>
                             <Text style={[styles.menuItemText, { color: colors.text }]}>
@@ -366,6 +380,11 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 3 },
         shadowOpacity: 0.3,
         shadowRadius: 5,
+    },
+    changePhotoHint: {
+        fontSize: 12,
+        marginTop: 6,
+        marginBottom: 4,
     },
     name: {
         fontSize: 28,

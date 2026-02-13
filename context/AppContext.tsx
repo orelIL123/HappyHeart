@@ -40,7 +40,7 @@ interface AppContextType {
     setUserRole: (role: UserRole) => void;
     joinActivity: (activityId: string) => void;
     leaveActivity: (activityId: string) => void;
-    createActivity: (activity: Omit<Activity, 'id' | 'participants'>) => Promise<void>;
+    createActivity: (activity: Omit<Activity, 'id' | 'participants'>) => Promise<string>;
     isAvailable: boolean;
     toggleAvailability: (duration: string, location: string) => void;
     availabilityDuration: string;
@@ -170,12 +170,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, []);
 
     useEffect(() => {
-        // Real-time subscription to activities
+        // Subscribe to activities only when user is authenticated and approved (Firestore allows read only for isApprovedUser)
+        if (!isAuthenticated || !currentUser?.id) {
+            setActivities([]);
+            return;
+        }
         const unsubscribe = firebaseService.subscribeToActivities((data) => {
             setActivities(data);
         });
         return () => unsubscribe();
-    }, []);
+    }, [isAuthenticated, currentUser?.id]);
 
     // Subscribe to user notifications from Firestore
     useEffect(() => {
@@ -321,31 +325,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
     };
 
-    const createActivity = async (activityData: Omit<Activity, 'id' | 'participants'>) => {
+    const createActivity = async (activityData: Omit<Activity, 'id' | 'participants'>): Promise<string> => {
+        const docRef = await firebaseService.createActivity(activityData);
+        if (!docRef) throw new Error('Failed to create activity - no document reference returned');
         try {
-            const docRef = await firebaseService.createActivity(activityData);
-            if (docRef) {
-                // Add notification for organizer
-                const newNotification = {
-                    id: Date.now().toString(),
-                    title: `פעילות חדשה נוצרה: ${activityData.title}`,
-                    time: 'עכשיו',
-                    read: false,
-                    activityId: docRef.id,
-                    type: 'new_activity' as const
-                };
-                setNotifications(prev => [newNotification, ...prev]);
-                
-                // Trigger notifications for nearby clowns
-                await notifyNearbyClowns({ ...activityData, id: docRef.id });
-            } else {
-                throw new Error('Failed to create activity - no document reference returned');
-            }
-        } catch (error: any) {
-            console.error('Error creating activity:', error);
-            // Re-throw the error so the caller can handle it
-            throw error;
+            const newNotification = {
+                id: Date.now().toString(),
+                title: `פעילות חדשה נוצרה: ${activityData.title}`,
+                time: 'עכשיו',
+                read: false,
+                activityId: docRef.id,
+                type: 'new_activity' as const
+            };
+            setNotifications(prev => [newNotification, ...prev]);
+            await notifyNearbyClowns({ ...activityData, id: docRef.id });
+        } catch (err) {
+            console.error('Error after creating activity (notifications):', err);
         }
+        return docRef.id;
     };
 
     const notifyNearbyClowns = async (activity: Omit<Activity, 'id' | 'participants'>) => {
@@ -439,15 +436,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     throw new Error('LOGIN_FAILED');
                 }
             } else {
-                // Phone login - find user by phone, then login with email
-                const user = await firebaseService.getUserByPhoneAndPassword(phoneOrEmail, password);
-                if (user) {
-                    console.log('AppContext: User logged in via phone:', user.name);
-                    // Auth state listener will handle setting the user
-                    return;
-                } else {
-                    throw new Error('LOGIN_FAILED');
-                }
+                // Phone login: sign in with phone@happyhart.app (no Firestore query before login - rules block it)
+                await firebaseService.getUserByPhoneAndPassword(phoneOrEmail, password);
+                console.log('AppContext: Signed in via phone, auth state listener will set user');
+                return;
             }
         } catch (error: any) {
             console.error('AppContext: Login error:', error);
