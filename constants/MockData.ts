@@ -12,12 +12,28 @@ export interface User {
     authUid?: string;
     password?: string;
     approvalStatus?: 'pending' | 'approved' | 'rejected';
+    registrationDate?: string;
+    approvedBy?: string;
+    approvedAt?: string;
+    rejectionReason?: string;
+    futureAvailabilitySlots?: AvailabilitySlot[];
+}
+
+export interface AvailabilitySlot {
+    id: string;
+    date: string; // YYYY-MM-DD
+    startTime: string; // HH:mm
+    duration: string;
+    location: string;
 }
 
 export interface Activity {
     id: string;
     title: string;
     location: string;
+    city?: string;
+    fullAddress?: string;
+    wazeLink?: string;
     institution: string;
     startTime: string;
     endTime: string;
@@ -29,11 +45,14 @@ export interface Activity {
     contactPerson: string;  // Name of contact person at the institution
     contactPhone: string;   // Phone number of contact person
     department?: string;    // Keep for backward compatibility
-    intensity?: 'low' | 'medium' | 'high';
     isUrgent?: boolean;
     expirationDate?: string;
     likes?: string[]; // User IDs who liked this activity
     imageUrl?: string; // Optional activity image
+    approvalStatus?: 'pending' | 'approved' | 'rejected';
+    approvedBy?: string;
+    approvedAt?: string;
+    rejectionReason?: string;
 }
 
 export interface Comment {
@@ -94,6 +113,8 @@ export const MOCK_ACTIVITIES: Activity[] = [
         id: 'a1',
         title: 'שמח במיון ילדים',
         location: 'תל אביב',
+        city: 'תל אביב',
+        fullAddress: 'רחוב ויצמן 6, תל אביב',
         institution: 'בית חולים איכילוב',
         startTime: new Date().toISOString(),
         endTime: new Date(Date.now() + 7200000).toISOString(),
@@ -105,12 +126,13 @@ export const MOCK_ACTIVITIES: Activity[] = [
         contactPerson: 'אחות רחל כהן',
         contactPhone: '050-1234567',
         department: 'מיון ילדים',
-        intensity: 'high',
     },
     {
         id: 'a2',
         title: 'ביקור מחלקת אונקולוגיה',
         location: 'ירושלים',
+        city: 'ירושלים',
+        fullAddress: 'קרית הדסה, ירושלים',
         institution: 'הדסה עין כרם',
         startTime: new Date(Date.now() + 86400000).toISOString(),
         endTime: new Date(Date.now() + 93600000).toISOString(),
@@ -122,12 +144,13 @@ export const MOCK_ACTIVITIES: Activity[] = [
         contactPerson: 'ד"ר יוסי לוי',
         contactPhone: '052-9876543',
         department: 'אונקולוגיה',
-        intensity: 'low',
     },
     {
         id: 'a3',
         title: 'מסיבת יום הולדת לילד מאושפז',
         location: 'פתח תקווה',
+        city: 'פתח תקווה',
+        fullAddress: 'רחוב קפלן 14, פתח תקווה',
         institution: 'מרכז שניידר',
         startTime: new Date(Date.now() + 172800000).toISOString(),
         endTime: new Date(Date.now() + 180000000).toISOString(),
@@ -139,7 +162,6 @@ export const MOCK_ACTIVITIES: Activity[] = [
         contactPerson: 'מירי שפירא',
         contactPhone: '054-3456789',
         department: 'כללי',
-        intensity: 'medium',
     },
 ];
 

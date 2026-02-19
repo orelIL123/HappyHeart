@@ -3,9 +3,10 @@ import { storage } from '@/config/firebaseConfig';
 import { androidButtonFix, androidTextFix, createShadow, preventFontScaling } from '@/constants/AndroidStyles';
 import Colors from '@/constants/Colors';
 import { firebaseService } from '@/services/firebaseService';
+import { formatPhoneNumber } from '@/utils/phoneFormatter';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { AlertCircle, ArrowRight, CheckCircle, ChevronDown, FileUp, Heart, Info, Lock, MapPin, Phone, Sparkles, User, X } from 'lucide-react-native';
 import React, { useState } from 'react';
@@ -16,6 +17,8 @@ export default function RegisterScreen() {
     const colorScheme = useColorScheme() ?? 'light';
     const colors = Colors[colorScheme];
     const router = useRouter();
+    const { role: roleParam } = useLocalSearchParams<{ role?: 'clown' | 'organizer' | 'admin' }>();
+    const role = (roleParam || 'clown') as 'clown' | 'organizer' | 'admin';
 
     const [form, setForm] = useState({
         name: '',
@@ -41,8 +44,10 @@ export default function RegisterScreen() {
     const validatePhone = (phone: string): string | null => {
         if (!phone.trim()) return 'מספר טלפון הוא שדה חובה';
         const phoneDigits = phone.replace(/\D/g, '');
-        if (phoneDigits.length < 9 || phoneDigits.length > 10) {
-            return 'מספר טלפון לא תקין (9-10 ספרות)';
+        const isLocal = phoneDigits.length >= 9 && phoneDigits.length <= 10;
+        const isIntlIl = phoneDigits.startsWith('972') && phoneDigits.length === 12;
+        if (!isLocal && !isIntlIl) {
+            return 'מספר טלפון לא תקין';
         }
         return null;
     };
@@ -205,16 +210,18 @@ export default function RegisterScreen() {
 
                             const phoneDigits = form.phone.replace(/\D/g, '');
                             const email = `${phoneDigits}@happyhart.app`;
+                            const formattedPhone = formatPhoneNumber(form.phone);
 
                             const userData = {
                                 name: form.name.trim(),
-                                phone: form.phone,
+                                phone: formattedPhone,
                                 password: form.password,
                                 email: email,
                                 preferredArea: form.location.trim() || '',
-                                role: 'clown' as const,
+                                role: role,
                                 avatar: 'https://i.pravatar.cc/150?u=' + encodeURIComponent(form.name),
-                                approvalStatus: 'approved' as const,
+                                approvalStatus: role === 'admin' ? ('approved' as const) : ('pending' as const),
+                                registrationDate: new Date().toISOString(),
                                 ...(certificationUrl && { certificationUrl })
                             };
 
@@ -392,7 +399,7 @@ export default function RegisterScreen() {
                                 <Phone size={20} color={formErrors.phone ? colors.error : colors.tabIconDefault} />
                                 <TextInput
                                     style={[styles.input, { color: colors.text }]}
-                                    placeholder="050-1234567"
+                                    placeholder="+972XXXXXXXXX"
                                     placeholderTextColor={colors.tabIconDefault}
                                     value={form.phone}
                                     onChangeText={(text) => {
@@ -403,6 +410,7 @@ export default function RegisterScreen() {
                                         }
                                     }}
                                     onBlur={() => {
+                                        setForm(prev => ({ ...prev, phone: formatPhoneNumber(prev.phone) }));
                                         const error = validatePhone(form.phone);
                                         setFormErrors({ ...formErrors, phone: error || '' });
                                     }}

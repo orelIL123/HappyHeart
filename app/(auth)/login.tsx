@@ -87,18 +87,10 @@ export default function LoginScreen() {
 
                     <TouchableOpacity
                         style={styles.registerLink}
-                        onPress={() => router.push('/(auth)/register')}
+                        onPress={() => router.push('/(auth)/role-select')}
                     >
                         <Text style={[styles.registerText, { color: colors.text }]}>עוד לא רשום? </Text>
                         <Text style={[styles.registerLinkText, { color: colors.primary }]}>צור חשבון חדש</Text>
-                    </TouchableOpacity>
-
-                    {/* Admin cleanup link - hidden but accessible */}
-                    <TouchableOpacity
-                        style={[styles.registerLink, { marginTop: 30 }]}
-                        onPress={() => router.push('/admin-cleanup')}
-                    >
-                        <Text style={[styles.registerLinkText, { color: colors.tabIconDefault, fontSize: 12 }]}>🔧 ניקוי מערכת</Text>
                     </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>

@@ -4,8 +4,8 @@ import Colors from '@/constants/Colors';
 import { Activity } from '@/constants/MockData';
 import { format } from 'date-fns';
 import { he } from 'date-fns/locale';
-import { Activity as ActivityIcon, Building, Calendar as CalendarIcon, Clock, Heart, MapPin, Users } from 'lucide-react-native';
-import React from 'react';
+import { Building, Calendar as CalendarIcon, Clock, Heart, MapPin, Users } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { useApp } from '@/context/AppContext';
@@ -31,13 +31,27 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity, isJoined }
     const dateStr = format(startTime, 'EEEE, d בMMMM', { locale: he });
     const timeStr = `${format(new Date(activity.endTime), 'HH:mm')} - ${format(startTime, 'HH:mm')}`;
 
-    const intensityColor = activity.intensity === 'high' ? colors.error :
-        activity.intensity === 'medium' ? colors.secondary :
-            colors.success;
+    const [participantAvatars, setParticipantAvatars] = useState<string[]>([]);
 
-    const intensityLabel = activity.intensity === 'high' ? 'אינטנסיביות גבוהה' :
-        activity.intensity === 'medium' ? 'אינטנסיביות בינונית' :
-            'אינטנסיביות נמוכה';
+    useEffect(() => {
+        let mounted = true;
+        const fetchAvatars = async () => {
+            if (!activity.participants?.length) {
+                if (mounted) setParticipantAvatars([]);
+                return;
+            }
+            try {
+                const users = await firebaseService.getUsersByIds(activity.participants.slice(0, 4));
+                if (mounted) {
+                    setParticipantAvatars(users.map(user => user.avatar).filter(Boolean));
+                }
+            } catch (error) {
+                console.error('Error loading participant avatars:', error);
+            }
+        };
+        fetchAvatars();
+        return () => { mounted = false; };
+    }, [activity.participants]);
 
     const handleToggleLike = async (e: any) => {
         e.stopPropagation();
@@ -81,14 +95,24 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity, isJoined }
                 </View>
                 <View style={styles.row}>
                     <MapPin size={16} color={colors.tabIconDefault} />
-                    <Text style={[styles.detailText, { color: colors.text }]}>{activity.location}</Text>
+                    <Text style={[styles.detailText, { color: colors.text }]}>{activity.fullAddress || activity.location}</Text>
                 </View>
-                {activity.intensity && (
-                    <View style={styles.row}>
-                        <ActivityIcon size={16} color={intensityColor} />
-                        <Text style={[styles.detailText, { color: intensityColor, fontWeight: '700' }]}>{intensityLabel}</Text>
+                <View style={styles.row}>
+                    <Users size={16} color={colors.playful} />
+                    <View style={styles.avatarStack}>
+                        {participantAvatars.length === 0 ? (
+                            <Text style={[styles.detailText, { color: colors.tabIconDefault }]}>אין נרשמים עדיין</Text>
+                        ) : (
+                            participantAvatars.map((avatar, index) => (
+                                <Image
+                                    key={`${avatar}-${index}`}
+                                    source={{ uri: avatar }}
+                                    style={[styles.participantAvatar, { right: index * 18 }]}
+                                />
+                            ))
+                        )}
                     </View>
-                )}
+                </View>
             </View>
 
             <View style={styles.footer}>
@@ -224,5 +248,21 @@ const styles = StyleSheet.create({
         fontFamily: 'Inter',
         ...androidTextFix,
         ...preventFontScaling,
+    },
+    avatarStack: {
+        minHeight: 26,
+        minWidth: 100,
+        marginRight: 10,
+        position: 'relative',
+        justifyContent: 'center',
+        alignItems: 'flex-end',
+    },
+    participantAvatar: {
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        position: 'absolute',
+        borderWidth: 1.5,
+        borderColor: '#fff',
     },
 });

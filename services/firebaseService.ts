@@ -23,7 +23,7 @@ import {
 } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { auth, db, storage } from '../config/firebaseConfig';
-import { Activity, Comment, User } from '../constants/MockData';
+import { Activity, AvailabilitySlot, Comment, User } from '../constants/MockData';
 
 export const firebaseService = {
     // Activities
@@ -111,12 +111,18 @@ export const firebaseService = {
 
     getUserByPhoneAndPassword: async (phone: string, password: string): Promise<User | null> => {
         try {
-            // Normalize phone to digits only (0501234567 or 050-1234567 -> 0501234567)
+            // Normalize phone to local format (0501234567) for auth email mapping
             const phoneDigits = phone.replace(/\D/g, '');
             if (phoneDigits.length < 9) {
                 return null;
             }
-            const phoneNormalized = phoneDigits.startsWith('0') ? phoneDigits : '0' + phoneDigits;
+            let phoneNormalized = phoneDigits;
+            if (phoneDigits.startsWith('972') && phoneDigits.length >= 11) {
+                // +972529250237 -> 0529250237
+                phoneNormalized = `0${phoneDigits.slice(3)}`;
+            } else if (!phoneDigits.startsWith('0')) {
+                phoneNormalized = `0${phoneDigits}`;
+            }
             const email = `${phoneNormalized}@happyhart.app`;
 
             // Sign in with Firebase Auth only - no Firestore query before login (rules block unauthenticated read)
@@ -304,13 +310,20 @@ export const firebaseService = {
     },
 
     // Availability
-    updateAvailability: async (userId: string, isAvailable: boolean, location: string, duration: string) => {
+    updateAvailability: async (
+        userId: string,
+        isAvailable: boolean,
+        location: string,
+        duration: string,
+        futureSlots?: AvailabilitySlot[]
+    ) => {
         const availabilityRef = doc(db, 'availabilities', userId);
         return await setDoc(availabilityRef, {
             userId,
             isAvailable,
             location,
             duration,
+            futureSlots: futureSlots || [],
             updatedAt: new Date().toISOString()
         });
     },
@@ -578,6 +591,26 @@ export const firebaseService = {
         const notificationRef = doc(db, 'notifications', notificationId);
         return await updateDoc(notificationRef, {
             read: true
+        });
+    },
+
+    // Activity Approval
+    approveActivity: async (activityId: string, adminId: string) => {
+        const activityRef = doc(db, 'activities', activityId);
+        return await updateDoc(activityRef, {
+            approvalStatus: 'approved',
+            approvedBy: adminId,
+            approvedAt: new Date().toISOString()
+        });
+    },
+
+    rejectActivity: async (activityId: string, adminId: string, reason?: string) => {
+        const activityRef = doc(db, 'activities', activityId);
+        return await updateDoc(activityRef, {
+            approvalStatus: 'rejected',
+            approvedBy: adminId,
+            approvedAt: new Date().toISOString(),
+            rejectionReason: reason || ''
         });
     }
 };

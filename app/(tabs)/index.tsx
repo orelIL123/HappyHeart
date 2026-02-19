@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import { Activity as ActivityIcon, Calendar, Heart, Users } from 'lucide-react-native';
 import React from 'react';
 import {
+    Animated,
     Dimensions,
     Platform,
     ScrollView,
@@ -39,6 +40,24 @@ export default function HomeScreen() {
 
   // Count unique active clowns
   const activeClowns = new Set(activities.flatMap(a => a.participants)).size;
+  const todayCount = activities.filter(a => {
+    const d = new Date(a.startTime);
+    const now = new Date();
+    return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
+  const todayKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+  const pulse = React.useRef(new Animated.Value(1)).current;
+
+  React.useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.08, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 700, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
 
   const isDark = colorScheme === 'dark';
   const bgGradientColor = isDark ? '#1a0a2e' : '#FDF0F8';
@@ -82,6 +101,17 @@ export default function HomeScreen() {
 
         {/* Quick Action Buttons */}
         <View style={styles.actionsContainer}>
+          <Animated.View style={{ transform: [{ scale: pulse }], width: '100%' }}>
+            <TouchableOpacity
+              style={[styles.todayButton, { backgroundColor: colors.primary }]}
+              onPress={() => router.push({ pathname: '/(tabs)/board', params: { date: todayKey } })}
+              activeOpacity={0.9}
+            >
+              <Calendar size={18} color="#fff" style={styles.actionIcon} />
+              <Text style={styles.todayButtonText}>צפייה בפעילויות היום ({todayCount})</Text>
+            </TouchableOpacity>
+          </Animated.View>
+
           {/* Join Community → Profile */}
           <TouchableOpacity
             style={[styles.actionBtn, { backgroundColor: colors.accent }]}
@@ -251,6 +281,21 @@ const styles = StyleSheet.create({
     marginTop: 28,
     width: '100%',
     flexWrap: 'wrap',
+  },
+  todayButton: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 52,
+    borderRadius: 26,
+    width: '100%',
+    marginBottom: 10,
+  },
+  todayButtonText: {
+    color: '#fff',
+    fontWeight: '900',
+    fontSize: 15,
+    fontFamily: 'Inter',
   },
   actionBtn: {
     flexDirection: 'row-reverse',

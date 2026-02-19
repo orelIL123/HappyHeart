@@ -4,7 +4,7 @@ import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firesto
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth, db } from '../config/firebaseConfig';
 import { CITY_COORDINATES } from '../constants/Coordinates';
-import { Activity, User, UserRole } from '../constants/MockData';
+import { Activity, AvailabilitySlot, User, UserRole } from '../constants/MockData';
 import { DEFAULT_NOTIFICATION_PREFERENCES, NotificationPreferences } from '../constants/NotificationTypes';
 import { firebaseService } from '../services/firebaseService';
 import { notificationService } from '../services/notificationService';
@@ -42,7 +42,7 @@ interface AppContextType {
     leaveActivity: (activityId: string) => void;
     createActivity: (activity: Omit<Activity, 'id' | 'participants'>) => Promise<string>;
     isAvailable: boolean;
-    toggleAvailability: (duration: string, location: string) => void;
+    toggleAvailability: (duration: string, location: string, futureSlots?: AvailabilitySlot[]) => void;
     availabilityDuration: string;
     sidebarOpen: boolean;
     setSidebarOpen: (open: boolean) => void;
@@ -170,16 +170,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, []);
 
     useEffect(() => {
-        // Subscribe to activities only when user is authenticated and approved (Firestore allows read only for isApprovedUser)
+        // Subscribe to activities only when user is authenticated and approved
         if (!isAuthenticated || !currentUser?.id) {
             setActivities([]);
             return;
         }
         const unsubscribe = firebaseService.subscribeToActivities((data) => {
-            setActivities(data);
+            // Filter based on user role and approval status
+            const filtered = data.filter(activity => {
+                // Admins see all activities
+                if (currentUser.role === 'admin') return true;
+
+                // Organizers see all activities
+                if (currentUser.role === 'organizer') return true;
+
+                // Clowns see only approved activities
+                if (currentUser.role === 'clown') {
+                    return activity.approvalStatus !== 'pending' && activity.approvalStatus !== 'rejected';
+                }
+
+                return false;
+            });
+
+            setActivities(filtered);
         });
         return () => unsubscribe();
-    }, [isAuthenticated, currentUser?.id]);
+    }, [isAuthenticated, currentUser?.id, currentUser?.role]);
 
     // Subscribe to user notifications from Firestore
     useEffect(() => {
@@ -338,7 +354,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 type: 'new_activity' as const
             };
             setNotifications(prev => [newNotification, ...prev]);
-            await notifyNearbyClowns({ ...activityData, id: docRef.id });
+            await notifyNearbyClowns(activityData);
         } catch (err) {
             console.error('Error after creating activity (notifications):', err);
         }
@@ -404,7 +420,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
     };
 
-    const toggleAvailability = async (duration: string, location: string) => {
+    const toggleAvailability = async (duration: string, location: string, futureSlots: AvailabilitySlot[] = []) => {
         if (!currentUser) return;
         const nextState = !isAvailable;
         setIsAvailable(nextState);
@@ -412,7 +428,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setAvailabilityLocation(nextState ? location : '');
 
         try {
-            await firebaseService.updateAvailability(currentUser.id, nextState, location, duration);
+            await firebaseService.updateAvailability(currentUser.id, nextState, location, duration, futureSlots);
+            await firebaseService.updateUser(currentUser.id, { futureAvailabilitySlots: futureSlots });
+            setCurrentUser(prev => (prev ? { ...prev, futureAvailabilitySlots: futureSlots } : prev));
         } catch (error) {
             console.error('Error updating availability:', error);
         }

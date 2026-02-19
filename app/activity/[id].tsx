@@ -4,16 +4,18 @@ import { Comment, User } from '@/constants/MockData';
 import { useApp } from '@/context/AppContext';
 import { firebaseService } from '@/services/firebaseService';
 import { pushNotificationService } from '@/services/pushNotificationService';
+import { formatPhoneNumber } from '@/utils/phoneFormatter';
 import { format } from 'date-fns';
 import { he } from 'date-fns/locale';
 import * as ImagePicker from 'expo-image-picker';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { AlertTriangle, Building, Calendar as CalendarIcon, Clock, Heart, ImagePlus, MapPin, MessageCircle, Phone as PhoneIcon, Send, Share2, MessageCircle as WhatsAppIcon } from 'lucide-react-native';
+import { AlertTriangle, Building, Calendar as CalendarIcon, Clock, Heart, ImagePlus, MapPin, MessageCircle, Navigation, Phone as PhoneIcon, Send, Share2, MessageCircle as WhatsAppIcon } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function ActivityDetailsScreen() {
-    const { id } = useLocalSearchParams();
+    const params = useLocalSearchParams<{ id?: string | string[] }>();
+    const id = Array.isArray(params.id) ? params.id[0] : params.id;
     const { activities, currentUser, joinActivity, leaveActivity } = useApp();
     const colorScheme = useColorScheme() ?? 'light';
     const colors = Colors[colorScheme];
@@ -98,7 +100,8 @@ export default function ActivityDetailsScreen() {
 
     const handleWhatsApp = (phone?: string) => {
         if (!phone) return;
-        const cleanPhone = phone.replace(/[^\d]/g, '');
+        const normalized = formatPhoneNumber(phone);
+        const cleanPhone = normalized.replace(/[^\d]/g, '');
         const url = `whatsapp://send?phone=${cleanPhone}`;
         Linking.canOpenURL(url).then((supported: boolean) => {
             if (supported) {
@@ -111,7 +114,13 @@ export default function ActivityDetailsScreen() {
 
     const handleCall = (phone?: string) => {
         if (!phone) return;
-        Linking.openURL(`tel:${phone}`);
+        const normalized = formatPhoneNumber(phone);
+        Linking.openURL(`tel:${normalized}`);
+    };
+
+    const handleOpenWaze = () => {
+        const query = activity.wazeLink || `https://waze.com/ul?q=${encodeURIComponent(activity.fullAddress || activity.location)}&navigate=yes`;
+        Linking.openURL(query);
     };
 
     const handleChangeActivityImage = async () => {
@@ -300,17 +309,6 @@ export default function ActivityDetailsScreen() {
                                 <Text style={[styles.deptBadgeText, { color: colors.accent }]}>{activity.department}</Text>
                             </View>
                         )}
-                        {activity.intensity && (
-                            <View style={[styles.intensityBadge, {
-                                backgroundColor: (activity.intensity === 'high' ? colors.error : activity.intensity === 'medium' ? colors.secondary : colors.success) + '20'
-                            }]}>
-                                <Text style={[styles.intensityBadgeText, {
-                                    color: activity.intensity === 'high' ? colors.error : activity.intensity === 'medium' ? colors.secondary : colors.success
-                                }]}>
-                                    {activity.intensity === 'high' ? 'אינטנסיביות גבוהה' : activity.intensity === 'medium' ? 'אינטנסיביות בינונית' : 'אינטנסיביות נמוכה'}
-                                </Text>
-                            </View>
-                        )}
                         {(currentUser?.role === 'organizer' || currentUser?.role === 'admin') && (
                             <TouchableOpacity
                                 style={[styles.reinforceBadge, { backgroundColor: colors.error }]}
@@ -335,7 +333,7 @@ export default function ActivityDetailsScreen() {
                     </View>
                     <View style={styles.infoRow}>
                         <MapPin size={20} color={colors.primary} />
-                        <Text style={[styles.infoText, { color: colors.text }]}>{activity.location}</Text>
+                        <Text style={[styles.infoText, { color: colors.text }]}>{activity.fullAddress || activity.location}</Text>
                     </View>
                     <View style={styles.infoRow}>
                         <CalendarIcon size={20} color={colors.primary} />
@@ -350,6 +348,13 @@ export default function ActivityDetailsScreen() {
                 <View style={styles.section}>
                     <Text style={[styles.sectionTitle, { color: colors.text }]}>תיאור הפעילות</Text>
                     <Text style={[styles.description, { color: colors.text }]}>{activity.description}</Text>
+                </View>
+
+                <View style={styles.section}>
+                    <TouchableOpacity style={[styles.wazeButton, { backgroundColor: '#33cc66' }]} onPress={handleOpenWaze}>
+                        <Navigation size={18} color="#fff" />
+                        <Text style={styles.wazeButtonText}>ניווט בוויז</Text>
+                    </TouchableOpacity>
                 </View>
 
                 <View style={styles.section}>
@@ -611,16 +616,6 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '700',
     },
-    intensityBadge: {
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 8,
-        marginLeft: 10,
-    },
-    intensityBadgeText: {
-        fontSize: 12,
-        fontWeight: '700',
-    },
     infoSection: {
         padding: 20,
         paddingBottom: 100,
@@ -660,6 +655,19 @@ const styles = StyleSheet.create({
         fontSize: 16,
         lineHeight: 24,
         textAlign: 'right',
+    },
+    wazeButton: {
+        height: 44,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'row-reverse',
+        gap: 8,
+    },
+    wazeButtonText: {
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '800',
     },
     participantList: {
         flexDirection: 'row-reverse',

@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Calendar, Clock, Home, Plus, User } from 'lucide-react-native';
+import { Calendar, Clock, Home, Plus, Shield, User } from 'lucide-react-native';
 import React from 'react';
 import { Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
 
@@ -103,6 +103,16 @@ export default function TabLayout() {
         options={{
           title: 'פרופיל',
           tabBarIcon: ({ color }) => <User size={24} color={color} />,
+        }}
+      />
+
+      {/* אדמין - מוצג רק למנהלי מערכת */}
+      <Tabs.Screen
+        name="admin"
+        options={{
+          title: 'אדמין',
+          tabBarIcon: ({ color }) => <Shield size={24} color={color} />,
+          href: currentUser?.role === 'admin' ? '/(tabs)/admin' : null,
         }}
       />
 
