@@ -8,7 +8,7 @@ import { firebaseService } from '@/services/firebaseService';
 import { formatPhoneNumber } from '@/utils/phoneFormatter';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { ImagePlus, ShieldAlert, Trash2 } from 'lucide-react-native';
+import { Building2, Clock3, FileText, ImagePlus, MapPin, Phone, ShieldAlert, Sparkles, Trash2, Users } from 'lucide-react-native';
 import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
@@ -27,6 +27,21 @@ const buildDateOptions = () => {
 
 const hourOptions = Array.from({ length: 24 }, (_, h) => pad(h));
 const minuteOptions = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
+
+function SectionCard({ title, subtitle, icon, children, colors }: any) {
+  return (
+    <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.border }]}> 
+      <View style={styles.sectionHead}>
+        <View style={[styles.sectionIcon, { backgroundColor: colors.primary + '15' }]}>{icon}</View>
+        <View style={styles.sectionTextWrap}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
+          {!!subtitle && <Text style={[styles.sectionSubtitle, { color: colors.tabIconDefault }]}>{subtitle}</Text>}
+        </View>
+      </View>
+      {children}
+    </View>
+  );
+}
 
 export default function CreateActivityScreen() {
   const { createActivity, currentUser } = useApp();
@@ -84,6 +99,23 @@ export default function CreateActivityScreen() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const institutionName = form.institution === 'אחר' ? form.customInstitution.trim() : form.institution;
+  const startTimeHuman = `${form.startHour}:${form.startMinute}`;
+  const endTimeHuman = `${form.endHour}:${form.endMinute}`;
+  const titlePreview = `${institutionName || 'מוסד'}${form.department ? ` - ${form.department}` : ''}${form.population ? ` - ${form.population}` : ''}`;
+
+  const requiredChecks = [
+    !!institutionName,
+    !!form.city,
+    !!form.fullAddress.trim(),
+    !!form.date,
+    !!form.population,
+    !!form.coordinatorName.trim(),
+    !!form.coordinatorPhone.trim(),
+    !!form.description.trim(),
+  ];
+  const completion = Math.round((requiredChecks.filter(Boolean).length / requiredChecks.length) * 100);
+
   const handlePickActivityImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -105,7 +137,6 @@ export default function CreateActivityScreen() {
       return;
     }
 
-    const institutionName = form.institution === 'אחר' ? form.customInstitution.trim() : form.institution;
     if (form.institution === 'אחר' && !institutionName) {
       Alert.alert('שגיאה', 'אנא הזן שם מוסד');
       return;
@@ -187,30 +218,41 @@ export default function CreateActivityScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <Header title="יצירת פעילות" showBackButton={false} />
-      <ScrollView style={styles.container}>
-        <View style={styles.form}>
-          <Text style={[styles.label, { color: colors.text }]}>מוסד *</Text>
-          <View style={styles.pickerContainer}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              {[...INSTITUTIONS, 'אחר'].map(inst => (
-                <TouchableOpacity
-                  key={inst}
-                  style={[
-                    styles.chip,
-                    form.institution === inst && { backgroundColor: colors.primary, borderColor: colors.primary },
-                    { borderColor: colors.border }
-                  ]}
-                  onPress={() => setForm({ ...form, institution: inst })}
-                >
-                  <Text style={[styles.chipText, form.institution === inst ? { color: '#fff' } : { color: colors.text }]}>{inst}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+      <ScrollView style={styles.container} contentContainerStyle={styles.form}>
+        <View style={[styles.heroCard, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '35' }]}>
+          <View style={styles.heroTop}>
+            <Sparkles size={18} color={colors.primary} />
+            <Text style={[styles.heroTitle, { color: colors.text }]}>טופס יצירת פעילות</Text>
           </View>
+          <Text style={[styles.heroSub, { color: colors.tabIconDefault }]}>הטופס מחולק לשלבים ברורים כדי לפרסם אירוע מהר וללא טעויות.</Text>
+          <View style={[styles.progressTrack, { backgroundColor: colors.border }]}> 
+            <View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${completion}%` }]} />
+          </View>
+          <Text style={[styles.progressLabel, { color: colors.primary }]}>{completion}% הושלם</Text>
+        </View>
+
+        <SectionCard
+          colors={colors}
+          icon={<Building2 size={18} color={colors.primary} />}
+          title="שלב 1: מוסד ומיקום"
+          subtitle="בחר מוסד, עיר וכתובת מלאה"
+        >
+          <Text style={[styles.label, { color: colors.text }]}>מוסד *</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            {[...INSTITUTIONS, 'אחר'].map(inst => (
+              <TouchableOpacity
+                key={inst}
+                style={[styles.chip, form.institution === inst && { backgroundColor: colors.primary, borderColor: colors.primary }, { borderColor: colors.border }]}
+                onPress={() => setForm({ ...form, institution: inst })}
+              >
+                <Text style={[styles.chipText, form.institution === inst ? { color: '#fff' } : { color: colors.text }]}>{inst}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
 
           {form.institution === 'אחר' && (
             <TextInput
-              style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border, marginTop: 10 }]}
+              style={[styles.input, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
               placeholder="הזן שם מוסד"
               placeholderTextColor={colors.tabIconDefault}
               value={form.customInstitution}
@@ -219,16 +261,12 @@ export default function CreateActivityScreen() {
             />
           )}
 
-          <Text style={[styles.label, { color: colors.text }]}>מיקום - עיר *</Text>
+          <Text style={[styles.label, { color: colors.text }]}>עיר *</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
             {CITIES.map(city => (
               <TouchableOpacity
                 key={city}
-                style={[
-                  styles.chip,
-                  form.city === city && { backgroundColor: colors.accent, borderColor: colors.accent },
-                  { borderColor: colors.border }
-                ]}
+                style={[styles.chip, form.city === city && { backgroundColor: colors.accent, borderColor: colors.accent }, { borderColor: colors.border }]}
                 onPress={() => setForm({ ...form, city })}
               >
                 <Text style={[styles.chipText, form.city === city ? { color: '#fff' } : { color: colors.text }]}>{city}</Text>
@@ -238,7 +276,7 @@ export default function CreateActivityScreen() {
 
           <Text style={[styles.label, { color: colors.text }]}>כתובת מלאה *</Text>
           <TextInput
-            style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+            style={[styles.input, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
             placeholder="רחוב ומספר בית"
             placeholderTextColor={colors.tabIconDefault}
             value={form.fullAddress}
@@ -248,24 +286,27 @@ export default function CreateActivityScreen() {
 
           <Text style={[styles.label, { color: colors.text }]}>מחלקה (לא חובה)</Text>
           <TextInput
-            style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+            style={[styles.input, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
             placeholder="למשל: מיון ילדים, אונקולוגיה וכו'"
             placeholderTextColor={colors.tabIconDefault}
             value={form.department}
             onChangeText={(text) => setForm({ ...form, department: text })}
             textAlign="right"
           />
+        </SectionCard>
 
+        <SectionCard
+          colors={colors}
+          icon={<Clock3 size={18} color={colors.primary} />}
+          title="שלב 2: מועד והרכב"
+          subtitle="בחירה בגלילה לתאריך, שעה וכמות ליצנים"
+        >
           <Text style={[styles.label, { color: colors.text }]}>תאריך *</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
             {dateOptions.map(option => (
               <TouchableOpacity
                 key={option.value}
-                style={[
-                  styles.chip,
-                  form.date === option.value && { backgroundColor: colors.primary, borderColor: colors.primary },
-                  { borderColor: colors.border }
-                ]}
+                style={[styles.chip, form.date === option.value && { backgroundColor: colors.primary, borderColor: colors.primary }, { borderColor: colors.border }]}
                 onPress={() => setForm({ ...form, date: option.value })}
               >
                 <Text style={[styles.chipText, form.date === option.value ? { color: '#fff' } : { color: colors.text }]}>{option.label}</Text>
@@ -326,38 +367,37 @@ export default function CreateActivityScreen() {
           </View>
 
           <Text style={[styles.label, { color: colors.text }]}>אוכלוסיה *</Text>
-          <View style={styles.pickerContainer}>
-            <View style={styles.optionRow}>
-              {populations.map(pop => (
-                <TouchableOpacity
-                  key={pop}
-                  style={[
-                    styles.optionChip,
-                    form.population === pop && { backgroundColor: colors.primary, borderColor: colors.primary },
-                    { borderColor: colors.border }
-                  ]}
-                  onPress={() => setForm({ ...form, population: pop })}
-                >
-                  <Text style={[styles.chipText, form.population === pop ? { color: '#fff' } : { color: colors.text }]}>
-                    {pop}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+          <View style={styles.optionRow}>
+            {populations.map(pop => (
+              <TouchableOpacity
+                key={pop}
+                style={[styles.optionChip, form.population === pop && { backgroundColor: colors.primary, borderColor: colors.primary }, { borderColor: colors.border }]}
+                onPress={() => setForm({ ...form, population: pop })}
+              >
+                <Text style={[styles.chipText, form.population === pop ? { color: '#fff' } : { color: colors.text }]}>{pop}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
           <Text style={[styles.label, { color: colors.text }]}>מספר ליצנים *</Text>
           <TextInput
-            style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+            style={[styles.input, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
             keyboardType="numeric"
             value={form.requiredClowns}
             onChangeText={(text) => setForm({ ...form, requiredClowns: text })}
             textAlign="center"
           />
+        </SectionCard>
 
+        <SectionCard
+          colors={colors}
+          icon={<Phone size={18} color={colors.primary} />}
+          title="שלב 3: רכז ועדכונים"
+          subtitle="פרטי קשר והתנהגות אירוע"
+        >
           <Text style={[styles.label, { color: colors.text }]}>שם רכז פעילות *</Text>
           <TextInput
-            style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+            style={[styles.input, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
             placeholder="שם מלא של רכז הפעילות"
             placeholderTextColor={colors.tabIconDefault}
             value={form.coordinatorName}
@@ -365,9 +405,9 @@ export default function CreateActivityScreen() {
             textAlign="right"
           />
 
-          <Text style={[styles.label, { color: colors.text }]}>מספר טלפון של הרכז לבירורים *</Text>
+          <Text style={[styles.label, { color: colors.text }]}>טלפון לבירורים *</Text>
           <TextInput
-            style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+            style={[styles.input, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
             placeholder="+972XXXXXXXXX"
             placeholderTextColor={colors.tabIconDefault}
             value={form.coordinatorPhone}
@@ -377,15 +417,15 @@ export default function CreateActivityScreen() {
             keyboardType="phone-pad"
           />
 
-          <View style={[styles.section, { backgroundColor: form.isUrgent ? colors.error + '10' : colors.card, borderColor: form.isUrgent ? colors.error : colors.border }]}>
-            <View style={styles.urgentRow}>
+          <View style={[styles.toggleCard, { backgroundColor: form.isUrgent ? colors.error + '10' : colors.background, borderColor: form.isUrgent ? colors.error : colors.border }]}>
+            <View style={styles.toggleRow}>
               <Switch
                 value={form.isUrgent}
                 onValueChange={(v) => setForm({ ...form, isUrgent: v })}
                 trackColor={{ false: colors.border, true: colors.error }}
                 thumbColor="#fff"
               />
-              <View style={styles.urgentRowRight}>
+              <View style={styles.toggleRight}>
                 <View style={[styles.iconContainer, { backgroundColor: colors.error + '15' }]}>
                   <ShieldAlert size={20} color={colors.error} />
                 </View>
@@ -397,15 +437,15 @@ export default function CreateActivityScreen() {
             </View>
           </View>
 
-          <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}> 
-            <View style={styles.urgentRow}>
+          <View style={[styles.toggleCard, { backgroundColor: colors.background, borderColor: colors.border }]}> 
+            <View style={styles.toggleRow}>
               <Switch
                 value={form.autoDelete}
                 onValueChange={(v) => setForm({ ...form, autoDelete: v })}
                 trackColor={{ false: colors.border, true: colors.primary }}
                 thumbColor="#fff"
               />
-              <View style={styles.urgentRowRight}>
+              <View style={styles.toggleRight}>
                 <View style={[styles.iconContainer, { backgroundColor: colors.primary + '15' }]}> 
                   <Trash2 size={20} color={colors.primary} />
                 </View>
@@ -416,10 +456,17 @@ export default function CreateActivityScreen() {
               </View>
             </View>
           </View>
+        </SectionCard>
 
+        <SectionCard
+          colors={colors}
+          icon={<FileText size={18} color={colors.primary} />}
+          title="שלב 4: תיאור ומדיה"
+          subtitle="תוכן ברור ותמונה מושכת"
+        >
           <Text style={[styles.label, { color: colors.text }]}>תיאור הפעילות *</Text>
           <TextInput
-            style={[styles.input, styles.textArea, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+            style={[styles.input, styles.textArea, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
             placeholder="ספר קצת על הפעילות..."
             placeholderTextColor={colors.tabIconDefault}
             multiline
@@ -431,7 +478,7 @@ export default function CreateActivityScreen() {
 
           <Text style={[styles.label, { color: colors.text }]}>תמונת פעילות (לא חובה)</Text>
           <TouchableOpacity
-            style={[styles.imagePickerBox, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[styles.imagePickerBox, { backgroundColor: colors.background, borderColor: colors.border }]}
             onPress={handlePickActivityImage}
             disabled={uploadingImage}
           >
@@ -451,19 +498,30 @@ export default function CreateActivityScreen() {
               </View>
             )}
           </TouchableOpacity>
+        </SectionCard>
 
-          <TouchableOpacity
-            style={[styles.submitButton, { backgroundColor: colors.primary }, (isSubmitting || uploadingImage) && { opacity: 0.7 }]}
-            onPress={handleCreate}
-            disabled={isSubmitting || uploadingImage}
-          >
-            {(isSubmitting || uploadingImage) ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.submitButtonText}>פרסם פעילות</Text>
-            )}
-          </TouchableOpacity>
+        <View style={[styles.previewCard, { backgroundColor: colors.secondary + '10', borderColor: colors.secondary + '40' }]}> 
+          <View style={styles.previewTitleRow}>
+            <MapPin size={16} color={colors.secondary} />
+            <Text style={[styles.previewTitle, { color: colors.text }]}>תצוגה מקדימה</Text>
+          </View>
+          <Text style={[styles.previewMain, { color: colors.text }]} numberOfLines={2}>{titlePreview}</Text>
+          <Text style={[styles.previewMeta, { color: colors.tabIconDefault }]}>{form.city}, {form.fullAddress || 'כתובת לא הוזנה'}</Text>
+          <Text style={[styles.previewMeta, { color: colors.tabIconDefault }]}>{form.date} | {startTimeHuman} - {endTimeHuman}</Text>
         </View>
+
+        <TouchableOpacity
+          style={[styles.submitButton, { backgroundColor: colors.primary }, (isSubmitting || uploadingImage) && { opacity: 0.7 }]}
+          onPress={handleCreate}
+          disabled={isSubmitting || uploadingImage}
+        >
+          {(isSubmitting || uploadingImage) ? <ActivityIndicator color="#fff" /> : (
+            <View style={styles.submitInner}>
+              <Users size={18} color="#fff" />
+              <Text style={styles.submitButtonText}>פרסם פעילות</Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -474,53 +532,127 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   form: {
-    padding: 20,
+    padding: 16,
     paddingBottom: Platform.OS === 'android' ? 120 : 100,
+    gap: 12,
+  },
+  heroCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 14,
+  },
+  heroTop: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+  },
+  heroTitle: {
+    fontSize: 17,
+    fontWeight: '900',
+    ...androidTextFix,
+    ...preventFontScaling,
+  },
+  heroSub: {
+    fontSize: 13,
+    marginTop: 6,
+    textAlign: 'right',
+    ...androidTextFix,
+    ...preventFontScaling,
+  },
+  progressTrack: {
+    height: 7,
+    borderRadius: 999,
+    marginTop: 10,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  progressLabel: {
+    marginTop: 6,
+    fontWeight: '800',
+    textAlign: 'right',
+    ...androidTextFix,
+    ...preventFontScaling,
+  },
+  sectionCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 14,
+    ...createShadow(2),
+  },
+  sectionHead: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  sectionIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  sectionTextWrap: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    ...androidTextFix,
+    ...preventFontScaling,
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    marginTop: 1,
+    ...androidTextFix,
+    ...preventFontScaling,
   },
   label: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontWeight: '800',
     textAlign: 'right',
-    marginBottom: 8,
-    marginTop: 15,
+    marginBottom: 7,
+    marginTop: 10,
     ...androidTextFix,
     ...preventFontScaling,
   },
   input: {
-    height: 50,
+    height: 48,
     borderRadius: 12,
     borderWidth: 1,
-    paddingHorizontal: 15,
-    fontSize: 16,
+    paddingHorizontal: 13,
+    fontSize: 15,
     ...androidTextFix,
     ...preventFontScaling,
   },
   textArea: {
     height: 100,
-    paddingTop: 12,
+    paddingTop: 10,
     textAlignVertical: 'top',
-  },
-  pickerContainer: {
-    marginBottom: 5,
   },
   chipRow: {
     flexDirection: 'row-reverse',
-    paddingVertical: 5,
+    paddingVertical: 4,
   },
   chip: {
-    paddingHorizontal: 15,
+    paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
-    marginLeft: 10,
+    marginLeft: 8,
   },
   chipText: {
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: '700',
     ...androidTextFix,
     ...preventFontScaling,
   },
   timeRow: {
-    gap: 8,
+    gap: 6,
   },
   timeScroller: {
     flexDirection: 'row-reverse',
@@ -528,15 +660,15 @@ const styles = StyleSheet.create({
   },
   timeChip: {
     minWidth: 52,
-    height: 42,
+    height: 40,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+    marginLeft: 7,
   },
   timeChipText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
     ...androidTextFix,
     ...preventFontScaling,
@@ -544,61 +676,43 @@ const styles = StyleSheet.create({
   optionRow: {
     flexDirection: 'row-reverse',
     justifyContent: 'space-between',
+    gap: 8,
   },
   optionChip: {
     flex: 1,
-    height: 45,
+    height: 44,
     borderRadius: 12,
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 8,
   },
-  submitButton: {
-    height: 60,
-    borderRadius: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 40,
-    marginBottom: 40,
-    ...createShadow(4),
-    ...androidButtonFix,
-  },
-  submitButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    ...androidTextFix,
-    ...preventFontScaling,
-  },
-  section: {
-    marginTop: 20,
-    marginBottom: 10,
-    borderRadius: 16,
+  toggleCard: {
+    marginTop: 12,
+    borderRadius: 14,
     borderWidth: 1,
     overflow: 'hidden',
   },
-  urgentRow: {
+  toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: 12,
     justifyContent: 'space-between',
   },
-  urgentRowRight: {
+  toggleRight: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
   },
   iconContainer: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 12,
+    marginLeft: 10,
   },
   rowTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '800',
     textAlign: 'right',
     ...androidTextFix,
     ...preventFontScaling,
@@ -606,7 +720,7 @@ const styles = StyleSheet.create({
   rowSubtitle: {
     fontSize: 12,
     textAlign: 'right',
-    marginTop: 2,
+    marginTop: 1,
     ...androidTextFix,
     ...preventFontScaling,
     flexShrink: 1,
@@ -617,7 +731,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     overflow: 'hidden',
-    marginTop: 8,
+    marginTop: 4,
   },
   pickedImage: {
     width: '100%',
@@ -636,6 +750,58 @@ const styles = StyleSheet.create({
   imagePickerText: {
     marginTop: 8,
     fontSize: 14,
+    ...androidTextFix,
+    ...preventFontScaling,
+  },
+  previewCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+  },
+  previewTitleRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 3,
+  },
+  previewTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    ...androidTextFix,
+    ...preventFontScaling,
+  },
+  previewMain: {
+    fontSize: 14,
+    fontWeight: '800',
+    textAlign: 'right',
+    ...androidTextFix,
+    ...preventFontScaling,
+  },
+  previewMeta: {
+    marginTop: 3,
+    fontSize: 12,
+    textAlign: 'right',
+    ...androidTextFix,
+    ...preventFontScaling,
+  },
+  submitButton: {
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+    ...createShadow(4),
+    ...androidButtonFix,
+  },
+  submitInner: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: 'bold',
     ...androidTextFix,
     ...preventFontScaling,
   },
