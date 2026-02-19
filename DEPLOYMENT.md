@@ -48,14 +48,19 @@ npm run build:production:ios
 ```
 
 #### 2.3 Deploy OTA Updates
-לאחר פרסום גרסה, ניתן לעדכן את האפליקציה ללא build חדש:
+לאחר פרסום גרסה, ניתן לעדכן את האפליקציה ללא build חדש.
+
+**חשוב:** כדי שמשתמשי אנדרואיד (פרודקשן) יקבלו את העדכון – צריך לשלוח גם ל-**production**, לא רק ל-preview.
 
 ```bash
-# Preview channel
+# רק ערוץ בדיקות (preview)
 npm run update:preview "תיאור העדכון"
 
-# Production channel
+# פרודקשן (כולל אנדרואיד בחנות)
 npm run update:production "תיאור העדכון"
+
+# שליחה לשניהם (אחרי בדיקה ב-preview):
+./scripts/quick-update.sh "תיאור העדכון" both
 ```
 
 ---

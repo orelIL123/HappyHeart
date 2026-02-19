@@ -51,9 +51,7 @@
       "requestHeaders": {},
       "enabled": true
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.1",
     "web": {
       "bundler": "metro",
       "output": "static",

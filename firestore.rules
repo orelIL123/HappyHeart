@@ -39,16 +39,31 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    // Activities - approved users can read, organizers/admins can create/update/delete
+    // Activities - role-based visibility and approval workflow
     match /activities/{activityId} {
-      allow read: if isApprovedUser();
+      // Read: Approved users see approved activities, organizers/admins see all
+      allow read: if isApprovedUser() && (
+        resource.data.approvalStatus == 'approved' ||
+        resource.data.organizerId == request.auth.uid ||
+        isAdmin() ||
+        isOrganizer()
+      );
+      
+      // Create: Only organizers and admins
       allow create: if isOrganizer();
-      allow update: if isOrganizer() ||
+      
+      // Update: Organizers can update their own, admins can update any
+      allow update: if (isOrganizer() && resource.data.organizerId == request.auth.uid) ||
+                       isAdmin() ||
+                       // Allow participants/likes updates for approved users
                        (isApprovedUser() &&
                         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participants']) ||
                          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) ||
                          request.resource.data.diff(resource.data).affectedKeys().hasAll(['participants', 'likes'])));
-      allow delete: if isOrganizer();
+      
+      // Delete: Organizers can delete their own, admins can delete any
+      allow delete: if (isOrganizer() && resource.data.organizerId == request.auth.uid) ||
+                       isAdmin();
     }
 
     // Availabilities - users can manage their own
