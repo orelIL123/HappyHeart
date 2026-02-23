@@ -2,7 +2,7 @@
   "expo": {
     "name": "שמחת הלב",
     "slug": "happyHart",
-    "version": "1.0.0",
+    "version": "1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "happyheart",
@@ -15,6 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
+      "buildNumber": "3",
       "bundleIdentifier": "com.happyheart.app",
       "googleServicesFile": "./GoogleService-Info-14.plist",
       "infoPlist": {
@@ -51,9 +52,7 @@
       "requestHeaders": {},
       "enabled": true
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1",
     "web": {
       "bundler": "metro",
       "output": "static",
