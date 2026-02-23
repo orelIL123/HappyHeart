@@ -1,55 +1,69 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, FlatList, Alert, Platform } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, FlatList, Alert, Linking } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Header } from '@/components/Header';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { useApp } from '@/context/AppContext';
-import { CheckCircle, XCircle, Users, Activity as ActivityIcon, ShieldAlert } from 'lucide-react-native';
+import { CheckCircle, XCircle, Users, Activity as ActivityIcon, ShieldAlert, Eye, Phone, MessageCircle, FileText } from 'lucide-react-native';
 import { firebaseService } from '@/services/firebaseService';
 import { User, Activity } from '@/constants/MockData';
-import { androidTextFix, preventFontScaling, createShadow } from '@/constants/AndroidStyles';
+import { formatPhoneNumber } from '@/utils/phoneFormatter';
 
 export default function AdminDashboard() {
   const { currentUser, activities } = useApp();
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
-  const [activeTab, setActiveTab] = useState<'pending-clowns' | 'pending-activities'>('pending-clowns');
+  const router = useRouter();
+
+  const [activeTab, setActiveTab] = useState<'clowns' | 'activities'>('clowns');
   const [pendingClowns, setPendingClowns] = useState<User[]>([]);
-  const [pendingActivities, setPendingActivities] = useState<Activity[]>([]);
-  const [loadingClowns, setLoadingClowns] = useState(false);
-  const [loadingActivities, setLoadingActivities] = useState(false);
+  const [approvedUsers, setApprovedUsers] = useState<User[]>([]);
 
   useEffect(() => {
-    // Subscribe to pending clowns
     const unsubscribe = firebaseService.subscribeToPendingClowns((clowns) => {
       setPendingClowns(clowns);
-      setLoadingClowns(false);
     });
-    setLoadingClowns(true);
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
-    // Filter pending activities
-    const pending = activities.filter(a => a.approvalStatus === 'pending');
-    setPendingActivities(pending);
-    setLoadingActivities(false);
-  }, [activities]);
+    let mounted = true;
+    const loadUsers = async () => {
+      const users = await firebaseService.getAllUsers();
+      if (mounted) {
+        setApprovedUsers(users);
+      }
+    };
+    loadUsers();
+    return () => {
+      mounted = false;
+    };
+  }, [pendingClowns.length]);
 
-  // Check if user is admin
+  const approvedClowns = useMemo(
+    () => approvedUsers.filter(user => user.role === 'clown'),
+    [approvedUsers]
+  );
+
+  const sortedActivities = useMemo(
+    () => [...activities].sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()),
+    [activities]
+  );
+  const pendingActivities = useMemo(
+    () => sortedActivities.filter(a => a.approvalStatus === 'pending'),
+    [sortedActivities]
+  );
+
   if (!currentUser || currentUser.role !== 'admin') {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <Header title="ניהול" showBackButton={false} />
         <View style={styles.centerContent}>
-          <View style={[styles.errorBox, { backgroundColor: colors.error + '15', borderColor: colors.error }]}>
+          <View style={[styles.errorBox, { backgroundColor: colors.error + '15', borderColor: colors.error }]}> 
             <ShieldAlert size={40} color={colors.error} />
-            <Text style={[styles.errorText, { color: colors.error }]}>
-              אין לך הרשאה לגשת לדף זה
-            </Text>
-            <Text style={[styles.errorSubtext, { color: colors.tabIconDefault }]}>
-              רק מנהלי מערכת יכולים לגשת לניהול
-            </Text>
+            <Text style={[styles.errorText, { color: colors.error }]}>אין לך הרשאה לגשת לדף זה</Text>
+            <Text style={[styles.errorSubtext, { color: colors.tabIconDefault }]}>רק מנהלי מערכת יכולים לגשת לניהול</Text>
           </View>
         </View>
       </View>
@@ -59,8 +73,8 @@ export default function AdminDashboard() {
   const handleApproveClown = async (clown: User) => {
     try {
       await firebaseService.approveClown(clown);
-      Alert.alert('הצלחה', `${clown.name} אישור בהצלחה!`);
-    } catch (error) {
+      Alert.alert('הצלחה', `${clown.name} אושר בהצלחה`);
+    } catch {
       Alert.alert('שגיאה', 'חלה שגיאה בעת אישור הליצן');
     }
   };
@@ -78,7 +92,7 @@ export default function AdminDashboard() {
             try {
               await firebaseService.rejectClown(clownId);
               Alert.alert('הצלחה', 'הליצן נדחה בהצלחה');
-            } catch (error) {
+            } catch {
               Alert.alert('שגיאה', 'חלה שגיאה בעת דחיית הליצן');
             }
           }
@@ -87,71 +101,97 @@ export default function AdminDashboard() {
     );
   };
 
+  const handleApproveActivity = async (activityId: string) => {
+    try {
+      await firebaseService.approveActivity(activityId, currentUser.id);
+      Alert.alert('הצלחה', 'הפעילות אושרה בהצלחה');
+    } catch {
+      Alert.alert('שגיאה', 'חלה שגיאה בעת אישור הפעילות');
+    }
+  };
+
+  const handleRejectActivity = async (activityId: string) => {
+    Alert.alert(
+      'דחיית פעילות',
+      'האם אתה בטוח שברצונך לדחות את הפעילות?',
+      [
+        { text: 'ביטול', style: 'cancel' },
+        {
+          text: 'דחה',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await firebaseService.rejectActivity(activityId, currentUser.id);
+              Alert.alert('הצלחה', 'הפעילות נדחתה בהצלחה');
+            } catch {
+              Alert.alert('שגיאה', 'חלה שגיאה בעת דחיית הפעילות');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}> 
       <Header title="ניהול מערכת" showBackButton={false} />
-      
+
       <View style={styles.tabsContainer}>
         <TouchableOpacity
           style={[
             styles.tab,
-            activeTab === 'pending-clowns' && {
-              borderBottomColor: colors.primary,
-              borderBottomWidth: 3,
-            }
+            activeTab === 'clowns' && { borderBottomColor: colors.primary, borderBottomWidth: 3 }
           ]}
-          onPress={() => setActiveTab('pending-clowns')}
+          onPress={() => setActiveTab('clowns')}
         >
-          <Users size={20} color={activeTab === 'pending-clowns' ? colors.primary : colors.tabIconDefault} />
-          <Text style={[
-            styles.tabText,
-            {
-              color: activeTab === 'pending-clowns' ? colors.primary : colors.tabIconDefault,
-              fontWeight: activeTab === 'pending-clowns' ? '700' : '600'
-            }
-          ]}>
-            ליצנים ({pendingClowns.length})
+          <Users size={20} color={activeTab === 'clowns' ? colors.primary : colors.tabIconDefault} />
+          <Text
+            style={[
+              styles.tabText,
+              { color: activeTab === 'clowns' ? colors.primary : colors.tabIconDefault, fontWeight: activeTab === 'clowns' ? '700' : '600' }
+            ]}
+          >
+            ליצנים ({approvedClowns.length})
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[
             styles.tab,
-            activeTab === 'pending-activities' && {
-              borderBottomColor: colors.primary,
-              borderBottomWidth: 3,
-            }
+            activeTab === 'activities' && { borderBottomColor: colors.primary, borderBottomWidth: 3 }
           ]}
-          onPress={() => setActiveTab('pending-activities')}
+          onPress={() => setActiveTab('activities')}
         >
-          <ActivityIcon size={20} color={activeTab === 'pending-activities' ? colors.primary : colors.tabIconDefault} />
-          <Text style={[
-            styles.tabText,
-            {
-              color: activeTab === 'pending-activities' ? colors.primary : colors.tabIconDefault,
-              fontWeight: activeTab === 'pending-activities' ? '700' : '600'
-            }
-          ]}>
-            פעילויות ({pendingActivities.length})
+          <ActivityIcon size={20} color={activeTab === 'activities' ? colors.primary : colors.tabIconDefault} />
+          <Text
+            style={[
+              styles.tabText,
+              { color: activeTab === 'activities' ? colors.primary : colors.tabIconDefault, fontWeight: activeTab === 'activities' ? '700' : '600' }
+            ]}
+          >
+            פעילויות ({sortedActivities.length})
           </Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {activeTab === 'pending-clowns' && (
-          <PendingClownsTab
-            clowns={pendingClowns}
-            loading={loadingClowns}
+        {activeTab === 'clowns' && (
+          <ClownsTab
+            pendingClowns={pendingClowns}
+            approvedClowns={approvedClowns}
             colors={colors}
             onApprove={handleApproveClown}
             onReject={handleRejectClown}
           />
         )}
-        {activeTab === 'pending-activities' && (
-          <PendingActivitiesTab
-            activities={pendingActivities}
-            loading={loadingActivities}
+        {activeTab === 'activities' && (
+          <ActivitiesTab
+            activities={sortedActivities}
+            pendingCount={pendingActivities.length}
             colors={colors}
+            onApprove={handleApproveActivity}
+            onReject={handleRejectActivity}
+            onOpen={(activityId) => router.push(`/activity/${activityId}`)}
           />
         )}
       </ScrollView>
@@ -159,154 +199,241 @@ export default function AdminDashboard() {
   );
 }
 
-interface PendingClownsTabProps {
-  clowns: User[];
-  loading: boolean;
+interface ClownsTabProps {
+  pendingClowns: User[];
+  approvedClowns: User[];
   colors: any;
   onApprove: (clown: User) => void;
   onReject: (clownId: string) => void;
 }
 
-const PendingClownsTab: React.FC<PendingClownsTabProps> = ({ clowns, loading, colors, onApprove, onReject }) => {
-  if (clowns.length === 0) {
-    return (
-      <View style={styles.emptyContainer}>
-        <Users size={48} color={colors.tabIconDefault} />
-        <Text style={[styles.emptyText, { color: colors.tabIconDefault }]}>
-          אין ליצנים בהמתנה
-        </Text>
-        <Text style={[styles.emptySubtext, { color: colors.tabIconDefault }]}>
-          כל הליצנים שהגישו בקשה אושרו או נדחו
-        </Text>
-      </View>
-    );
-  }
+const ClownsTab: React.FC<ClownsTabProps> = ({ pendingClowns, approvedClowns, colors, onApprove, onReject }) => {
+  const allClowns = useMemo(() => {
+    const deduped = new Map<string, User>();
+    approvedClowns.forEach((clown) => deduped.set(clown.id, clown));
+    pendingClowns.forEach((clown) => {
+      if (!deduped.has(clown.id)) {
+        deduped.set(clown.id, clown);
+      }
+    });
+    return Array.from(deduped.values()).sort((a, b) => a.name.localeCompare(b.name, 'he'));
+  }, [approvedClowns, pendingClowns]);
+
+  const handleCall = (phone?: string) => {
+    if (!phone) return;
+    Linking.openURL(`tel:${phone}`);
+  };
+
+  const handleWhatsApp = (phone?: string) => {
+    if (!phone) return;
+    const cleanPhone = formatPhoneNumber(phone).replace(/[^\d]/g, '');
+    const url = `whatsapp://send?phone=${cleanPhone}`;
+    Linking.canOpenURL(url).then((supported: boolean) => {
+      if (supported) {
+        Linking.openURL(url);
+      } else {
+        Linking.openURL(`https://wa.me/${cleanPhone}`);
+      }
+    }).catch(() => {
+      Linking.openURL(`https://wa.me/${cleanPhone}`);
+    });
+  };
+
+  const getApprovalLabel = (clown: User) => {
+    if (clown.approvalStatus === 'pending') return 'ממתין לאישור';
+    if (clown.approvalStatus === 'rejected') return 'נדחה';
+    return 'מאושר';
+  };
 
   return (
-    <FlatList
-      scrollEnabled={false}
-      data={clowns}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => (
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardHeaderLeft}>
-              <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
-              <Text style={[styles.cardSubtitle, { color: colors.tabIconDefault }]}>
-                {item.phone}
-              </Text>
-              {item.registrationDate && (
-                <Text style={[styles.cardDate, { color: colors.tabIconDefault }]}>
-                  נרשם: {new Date(item.registrationDate).toLocaleDateString('he-IL')}
-                </Text>
-              )}
-            </View>
-          </View>
-
-          {item.preferredArea && (
-            <Text style={[styles.cardArea, { color: colors.tabIconDefault }]}>
-              📍 אזור מועדף: {item.preferredArea}
-            </Text>
-          )}
-
-          <View style={styles.cardActions}>
-            <TouchableOpacity
-              style={[styles.approveButton, { backgroundColor: colors.success }]}
-              onPress={() => onApprove(item)}
-            >
-              <CheckCircle size={18} color="#fff" />
-              <Text style={styles.actionButtonText}>אישור</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.rejectButton, { backgroundColor: colors.error }]}
-              onPress={() => onReject(item.id)}
-            >
-              <XCircle size={18} color="#fff" />
-              <Text style={styles.actionButtonText}>דחייה</Text>
-            </TouchableOpacity>
-          </View>
+    <View style={styles.listContent}>
+      <View style={styles.statsRow}>
+        <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}> 
+          <Text style={[styles.statValue, { color: colors.primary }]}>{approvedClowns.length}</Text>
+          <Text style={[styles.statLabel, { color: colors.tabIconDefault }]}>ליצנים רשומים</Text>
         </View>
+        <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}> 
+          <Text style={[styles.statValue, { color: colors.error }]}>{pendingClowns.length}</Text>
+          <Text style={[styles.statLabel, { color: colors.tabIconDefault }]}>ממתינים לאישור</Text>
+        </View>
+      </View>
+
+      <Text style={[styles.sectionTitle, { color: colors.text }]}>בקשות ממתינות</Text>
+      {pendingClowns.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={[styles.emptyText, { color: colors.tabIconDefault }]}>אין ליצנים בהמתנה</Text>
+        </View>
+      ) : (
+        <FlatList
+          scrollEnabled={false}
+          data={pendingClowns}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}> 
+              <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
+              <Text style={[styles.cardSubtitle, { color: colors.tabIconDefault }]}>{item.phone || 'ללא טלפון'}</Text>
+              <View style={styles.cardActions}>
+                <TouchableOpacity style={[styles.approveButton, { backgroundColor: colors.success }]} onPress={() => onApprove(item)}>
+                  <CheckCircle size={18} color="#fff" />
+                  <Text style={styles.actionButtonText}>אישור</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.rejectButton, { backgroundColor: colors.error }]} onPress={() => onReject(item.id)}>
+                  <XCircle size={18} color="#fff" />
+                  <Text style={styles.actionButtonText}>דחייה</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        />
       )}
-      contentContainerStyle={styles.listContent}
-    />
+
+      <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 18 }]}>כל הליצנים במערכת ({allClowns.length})</Text>
+      {allClowns.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={[styles.emptyText, { color: colors.tabIconDefault }]}>אין ליצנים רשומים</Text>
+        </View>
+      ) : (
+        <FlatList
+          scrollEnabled={false}
+          data={allClowns}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}> 
+              <View style={styles.cardHeaderRow}>
+                <Text style={[styles.cardTitle, { color: colors.text, flex: 1 }]}>{item.name}</Text>
+                <View style={[styles.statusBadge, { backgroundColor: (item.approvalStatus === 'pending' ? '#f59e0b' : item.approvalStatus === 'rejected' ? colors.error : colors.success) + '20' }]}> 
+                  <Text style={[styles.statusText, { color: item.approvalStatus === 'pending' ? '#f59e0b' : item.approvalStatus === 'rejected' ? colors.error : colors.success }]}>{getApprovalLabel(item)}</Text>
+                </View>
+              </View>
+              <Text style={[styles.cardSubtitle, { color: colors.tabIconDefault }]}>טלפון: {item.phone || 'לא הוזן'}</Text>
+              <Text style={[styles.cardSubtitle, { color: colors.tabIconDefault }]}>אזור: {item.preferredArea || 'לא הוגדר'}</Text>
+              <Text style={[styles.cardSubtitle, { color: item.certificationUrl ? colors.success : colors.error }]}>
+                תעודת ליצן: {item.certificationUrl ? 'הועלתה' : 'לא הועלתה'}
+              </Text>
+
+              <View style={styles.cardActions}>
+                <TouchableOpacity
+                  style={[styles.secondaryButton, { borderColor: colors.primary }]}
+                  onPress={() => handleCall(item.phone)}
+                  disabled={!item.phone}
+                >
+                  <Phone size={16} color={item.phone ? colors.primary : colors.tabIconDefault} />
+                  <Text style={[styles.secondaryButtonText, { color: item.phone ? colors.primary : colors.tabIconDefault }]}>התקשר</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.whatsappButton, { opacity: item.phone ? 1 : 0.5 }]}
+                  onPress={() => handleWhatsApp(item.phone)}
+                  disabled={!item.phone}
+                >
+                  <MessageCircle size={16} color="#fff" />
+                  <Text style={styles.whatsappButtonText}>וואטסאפ</Text>
+                </TouchableOpacity>
+                {item.certificationUrl && (
+                  <TouchableOpacity
+                    style={[styles.secondaryButton, { borderColor: colors.border }]}
+                    onPress={() => Linking.openURL(item.certificationUrl!)}
+                  >
+                    <FileText size={16} color={colors.text} />
+                    <Text style={[styles.secondaryButtonText, { color: colors.text }]}>צפייה בתעודה</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )}
+        />
+      )}
+    </View>
   );
 };
 
-interface PendingActivitiesTabProps {
+interface ActivitiesTabProps {
   activities: Activity[];
-  loading: boolean;
+  pendingCount: number;
   colors: any;
+  onApprove: (activityId: string) => void;
+  onReject: (activityId: string) => void;
+  onOpen: (activityId: string) => void;
 }
 
-const PendingActivitiesTab: React.FC<PendingActivitiesTabProps> = ({ activities, loading, colors }) => {
-  if (activities.length === 0) {
-    return (
-      <View style={styles.emptyContainer}>
-        <ActivityIcon size={48} color={colors.tabIconDefault} />
-        <Text style={[styles.emptyText, { color: colors.tabIconDefault }]}>
-          אין פעילויות בהמתנה
-        </Text>
-        <Text style={[styles.emptySubtext, { color: colors.tabIconDefault }]}>
-          כל הפעילויות שהוגשו אושרו או נדחו
-        </Text>
-      </View>
-    );
-  }
+const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ activities, pendingCount, colors, onApprove, onReject, onOpen }) => {
+  const approvedCount = activities.filter(a => a.approvalStatus === 'approved').length;
+  const rejectedCount = activities.filter(a => a.approvalStatus === 'rejected').length;
 
   return (
-    <FlatList
-      scrollEnabled={false}
-      data={activities}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => (
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardHeaderLeft}>
-              <Text style={[styles.cardTitle, { color: colors.text }]}>{item.title}</Text>
-              <Text style={[styles.cardSubtitle, { color: colors.tabIconDefault }]}>
-                {item.institution}
-              </Text>
-              <Text style={[styles.cardLocation, { color: colors.tabIconDefault }]}>
-                📍 {item.location}
-              </Text>
-            </View>
-          </View>
-
-          <Text style={[styles.cardDescription, { color: colors.tabIconDefault }]}>
-            {item.description}
-          </Text>
-
-          <View style={styles.activityMeta}>
-            <Text style={[styles.metaItem, { color: colors.tabIconDefault }]}>
-              👥 {item.requiredClowns} ליצנים נדרשים
-            </Text>
-            <Text style={[styles.metaItem, { color: colors.tabIconDefault }]}>
-              🕐 {new Date(item.startTime).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
-            </Text>
-          </View>
-
-          <View style={styles.cardActions}>
-            <TouchableOpacity
-              style={[styles.approveButton, { backgroundColor: colors.success }]}
-              onPress={() => Alert.alert('בקרוב', 'פונקציית אישור פעילות תיושם בעדכון הבא')}
-            >
-              <CheckCircle size={18} color="#fff" />
-              <Text style={styles.actionButtonText}>אישור</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.rejectButton, { backgroundColor: colors.error }]}
-              onPress={() => Alert.alert('בקרוב', 'פונקציית דחיית פעילות תיושם בעדכון הבא')}
-            >
-              <XCircle size={18} color="#fff" />
-              <Text style={styles.actionButtonText}>דחייה</Text>
-            </TouchableOpacity>
-          </View>
+    <View style={styles.listContent}>
+      <View style={styles.statsRow}>
+        <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}> 
+          <Text style={[styles.statValue, { color: colors.primary }]}>{activities.length}</Text>
+          <Text style={[styles.statLabel, { color: colors.tabIconDefault }]}>סה"כ פעילויות</Text>
         </View>
+        <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}> 
+          <Text style={[styles.statValue, { color: '#f59e0b' }]}>{pendingCount}</Text>
+          <Text style={[styles.statLabel, { color: colors.tabIconDefault }]}>ממתינות</Text>
+        </View>
+      </View>
+
+      <View style={styles.statsRow}>
+        <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}> 
+          <Text style={[styles.statValue, { color: colors.success }]}>{approvedCount}</Text>
+          <Text style={[styles.statLabel, { color: colors.tabIconDefault }]}>מאושרות</Text>
+        </View>
+        <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}> 
+          <Text style={[styles.statValue, { color: colors.error }]}>{rejectedCount}</Text>
+          <Text style={[styles.statLabel, { color: colors.tabIconDefault }]}>נדחו</Text>
+        </View>
+      </View>
+
+      {activities.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={[styles.emptyText, { color: colors.tabIconDefault }]}>אין פעילויות להצגה</Text>
+        </View>
+      ) : (
+        <FlatList
+          scrollEnabled={false}
+          data={activities}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => {
+            const status = item.approvalStatus || 'pending';
+            const statusColor = status === 'approved' ? colors.success : status === 'rejected' ? colors.error : '#f59e0b';
+            const statusLabel = status === 'approved' ? 'מאושרת' : status === 'rejected' ? 'נדחתה' : 'ממתינה';
+
+            return (
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}> 
+                <View style={styles.cardHeaderRow}>
+                  <Text style={[styles.cardTitle, { color: colors.text, flex: 1 }]}>{item.title}</Text>
+                  <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}> 
+                    <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
+                  </View>
+                </View>
+
+                <Text style={[styles.cardSubtitle, { color: colors.tabIconDefault }]}>{item.institution}</Text>
+                <Text style={[styles.cardSubtitle, { color: colors.tabIconDefault }]}>תאריך: {new Date(item.startTime).toLocaleDateString('he-IL')}</Text>
+
+                <View style={styles.cardActions}>
+                  <TouchableOpacity style={[styles.secondaryButton, { borderColor: colors.border }]} onPress={() => onOpen(item.id)}>
+                    <Eye size={16} color={colors.text} />
+                    <Text style={[styles.secondaryButtonText, { color: colors.text }]}>צפייה/עריכה</Text>
+                  </TouchableOpacity>
+
+                  {status === 'pending' && (
+                    <>
+                      <TouchableOpacity style={[styles.approveButton, { backgroundColor: colors.success }]} onPress={() => onApprove(item.id)}>
+                        <CheckCircle size={18} color="#fff" />
+                        <Text style={styles.actionButtonText}>אישור</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.rejectButton, { backgroundColor: colors.error }]} onPress={() => onReject(item.id)}>
+                        <XCircle size={18} color="#fff" />
+                        <Text style={styles.actionButtonText}>דחייה</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              </View>
+            );
+          }}
+        />
       )}
-      contentContainerStyle={styles.listContent}
-    />
+    </View>
   );
 };
 
@@ -332,15 +459,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
     marginTop: 16,
-    ...androidTextFix,
-    ...preventFontScaling,
   },
   errorSubtext: {
     fontSize: 14,
     textAlign: 'center',
     marginTop: 8,
-    ...androidTextFix,
-    ...preventFontScaling,
   },
   tabsContainer: {
     flexDirection: 'row-reverse',
@@ -360,133 +483,127 @@ const styles = StyleSheet.create({
   },
   tabText: {
     fontSize: 14,
-    ...androidTextFix,
-    ...preventFontScaling,
   },
   content: {
     flex: 1,
-    padding: 20,
   },
   listContent: {
-    paddingBottom: Platform.OS === 'android' ? 100 : 40,
+    padding: 16,
+    paddingBottom: 120,
+  },
+  statsRow: {
+    flexDirection: 'row-reverse',
+    gap: 10,
+    marginBottom: 10,
+  },
+  statCard: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  statLabel: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    textAlign: 'right',
+    marginVertical: 12,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  emptyText: {
+    fontSize: 14,
   },
   card: {
-    borderRadius: 16,
     borderWidth: 1,
-    padding: 16,
-    marginBottom: 16,
-    ...createShadow(2),
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
   },
-  cardHeader: {
+  cardHeaderRow: {
     flexDirection: 'row-reverse',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  cardHeaderLeft: {
-    flex: 1,
+    alignItems: 'center',
+    gap: 10,
   },
   cardTitle: {
     fontSize: 16,
-    fontWeight: '700',
-    ...androidTextFix,
-    ...preventFontScaling,
+    fontWeight: '800',
+    textAlign: 'right',
   },
   cardSubtitle: {
     fontSize: 13,
     marginTop: 4,
-    ...androidTextFix,
-    ...preventFontScaling,
+    textAlign: 'right',
   },
-  cardDate: {
+  statusBadge: {
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  statusText: {
     fontSize: 12,
-    marginTop: 4,
-    fontStyle: 'italic',
-    ...androidTextFix,
-    ...preventFontScaling,
-  },
-  cardLocation: {
-    fontSize: 13,
-    marginTop: 4,
-    ...androidTextFix,
-    ...preventFontScaling,
-  },
-  cardArea: {
-    fontSize: 12,
-    marginBottom: 12,
-    ...androidTextFix,
-    ...preventFontScaling,
-  },
-  cardDescription: {
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 12,
-    ...androidTextFix,
-    ...preventFontScaling,
-  },
-  activityMeta: {
-    flexDirection: 'row-reverse',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
-  },
-  metaItem: {
-    fontSize: 12,
-    ...androidTextFix,
-    ...preventFontScaling,
+    fontWeight: '700',
   },
   cardActions: {
     flexDirection: 'row-reverse',
-    gap: 10,
-  },
-  approveButton: {
-    flex: 1,
-    flexDirection: 'row-reverse',
-    height: 44,
-    borderRadius: 12,
-    justifyContent: 'center',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
-    ...createShadow(2),
-  },
-  rejectButton: {
-    flex: 1,
-    flexDirection: 'row-reverse',
-    height: 44,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-    ...createShadow(2),
+    marginTop: 10,
   },
   actionButtonText: {
     color: '#fff',
-    fontSize: 13,
-    fontWeight: '600',
-    ...androidTextFix,
-    ...preventFontScaling,
+    fontWeight: '700',
   },
-  emptyContainer: {
+  approveButton: {
+    flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 20,
+    gap: 6,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: 16,
-    ...androidTextFix,
-    ...preventFontScaling,
+  rejectButton: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
-  emptySubtext: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 8,
-    ...androidTextFix,
-    ...preventFontScaling,
+  secondaryButton: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  secondaryButtonText: {
+    fontWeight: '700',
+  },
+  whatsappButton: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#25D366',
+  },
+  whatsappButtonText: {
+    color: '#fff',
+    fontWeight: '700',
   },
 });

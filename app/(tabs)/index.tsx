@@ -3,7 +3,7 @@ import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { useApp } from '@/context/AppContext';
 import { useRouter } from 'expo-router';
-import { Activity as ActivityIcon, Calendar, Heart, Users } from 'lucide-react-native';
+import { Activity as ActivityIcon, Calendar, Heart, Sparkles, Users } from 'lucide-react-native';
 import React from 'react';
 import {
     Animated,
@@ -22,7 +22,7 @@ const { width } = Dimensions.get('window');
 const BOTTOM_INSET = Platform.OS === 'ios' ? 34 : 0;
 
 export default function HomeScreen() {
-  const { activities, currentUser } = useApp();
+  const { activities, currentUser, isAvailable } = useApp();
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
   const router = useRouter();
@@ -112,16 +112,6 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Join Community → Profile */}
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: colors.accent }]}
-            onPress={() => router.push('/(tabs)/profile')}
-            activeOpacity={0.85}
-          >
-            <Users size={20} color="#fff" style={styles.actionIcon} />
-            <Text style={styles.actionBtnText}>הצטרף לקהילה</Text>
-          </TouchableOpacity>
-
           {/* Availability */}
           <TouchableOpacity
             style={[styles.actionBtn, styles.actionBtnMiddle, { backgroundColor: colors.secondary }]}
@@ -196,6 +186,23 @@ export default function HomeScreen() {
                currentUser.role === 'organizer' ? 'יש פעילויות חדשות לתאם?' :
                'בדוק את לוח הניהול'}
             </Text>
+          </View>
+        )}
+
+        {currentUser && !isAvailable && (
+          <View style={[styles.unavailableCard, { backgroundColor: '#DCFCE7', borderColor: '#86EFAC' }]}>
+            <View style={styles.unavailableTextWrap}>
+              <Text style={styles.unavailableTitle}>* אתה כרגע לא זמין</Text>
+              <Text style={styles.unavailableSub}>לא תקבל התראות על פעילויות חדשות עד שתפעיל זמינות</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.unavailableBtn}
+              onPress={() => router.push('/(tabs)/availability')}
+              activeOpacity={0.85}
+            >
+              <Sparkles size={14} color="#fff" />
+              <Text style={styles.unavailableBtnText}>הפוך לזמין</Text>
+            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
@@ -385,5 +392,50 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'Inter',
     textAlign: 'center',
+  },
+  unavailableCard: {
+    width: '100%',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 12,
+    borderWidth: 1,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  unavailableTextWrap: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  unavailableTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#166534',
+    fontFamily: 'Inter',
+    textAlign: 'right',
+  },
+  unavailableSub: {
+    fontSize: 11,
+    marginTop: 2,
+    color: '#14532D',
+    fontFamily: 'Inter',
+    textAlign: 'right',
+  },
+  unavailableBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#16A34A',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  unavailableBtnText: {
+    fontSize: 11,
+    color: '#fff',
+    fontWeight: '800',
+    fontFamily: 'Inter',
   },
 });

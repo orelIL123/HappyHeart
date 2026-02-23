@@ -2,6 +2,7 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { storage } from '@/config/firebaseConfig';
 import { androidButtonFix, androidTextFix, createShadow, preventFontScaling } from '@/constants/AndroidStyles';
 import Colors from '@/constants/Colors';
+import { INSTITUTIONS } from '@/constants/MockData';
 import { firebaseService } from '@/services/firebaseService';
 import { formatPhoneNumber } from '@/utils/phoneFormatter';
 import * as DocumentPicker from 'expo-document-picker';
@@ -9,7 +10,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { AlertCircle, ArrowRight, CheckCircle, ChevronDown, FileUp, Heart, Info, Lock, MapPin, Phone, Sparkles, User, X } from 'lucide-react-native';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -17,7 +18,7 @@ export default function RegisterScreen() {
     const colorScheme = useColorScheme() ?? 'light';
     const colors = Colors[colorScheme];
     const router = useRouter();
-    const { role: roleParam } = useLocalSearchParams<{ role?: 'clown' | 'organizer' | 'admin' }>();
+    const { role: roleParam, adminVerified } = useLocalSearchParams<{ role?: 'clown' | 'organizer' | 'admin'; adminVerified?: string }>();
     const role = (roleParam || 'clown') as 'clown' | 'organizer' | 'admin';
 
     const [form, setForm] = useState({
@@ -25,6 +26,8 @@ export default function RegisterScreen() {
         phone: '',
         password: '',
         location: '',
+        institution: '',
+        customInstitution: '',
     });
     const [certificationFile, setCertificationFile] = useState<{ uri: string; name: string; type: 'image' | 'pdf' } | null>(null);
     const [uploadingCert, setUploadingCert] = useState(false);
@@ -33,6 +36,25 @@ export default function RegisterScreen() {
     const [showPasswordInfo, setShowPasswordInfo] = useState(false);
     const [showCertInfo, setShowCertInfo] = useState(false);
     const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
+
+    useEffect(() => {
+        if (role === 'admin' && adminVerified !== '1') {
+            Alert.alert('נדרש אימות', 'כדי להירשם כמנהל מערכת יש להזין קודם את הסיסמה הראשית.');
+            router.replace('/(auth)/admin-code');
+        }
+    }, [role, adminVerified, router]);
+
+    const normalizePhoneToEmailLocal = (phone: string): string => {
+        const intl = formatPhoneNumber(phone); // +972XXXXXXXXX
+        const digits = intl.replace(/\D/g, ''); // 972XXXXXXXXX
+        if (digits.startsWith('972')) {
+            return `0${digits.slice(3)}`; // 0XXXXXXXXX
+        }
+        if (digits.startsWith('0')) {
+            return digits;
+        }
+        return `0${digits}`;
+    };
 
     // Validation functions
     const validateName = (name: string): string | null => {
@@ -208,9 +230,9 @@ export default function RegisterScreen() {
                                 }
                             }
 
-                            const phoneDigits = form.phone.replace(/\D/g, '');
-                            const email = `${phoneDigits}@happyhart.app`;
                             const formattedPhone = formatPhoneNumber(form.phone);
+                            const localPhoneForEmail = normalizePhoneToEmailLocal(form.phone);
+                            const email = `${localPhoneForEmail}@happyhart.app`;
 
                             const userData = {
                                 name: form.name.trim(),
@@ -218,6 +240,9 @@ export default function RegisterScreen() {
                                 password: form.password,
                                 email: email,
                                 preferredArea: form.location.trim() || '',
+                                institution: role === 'organizer'
+                                    ? (form.institution === 'אחר' ? form.customInstitution.trim() : form.institution.trim())
+                                    : '',
                                 role: role,
                                 avatar: 'https://i.pravatar.cc/150?u=' + encodeURIComponent(form.name),
                                 approvalStatus: role === 'admin' ? ('approved' as const) : ('pending' as const),
@@ -226,21 +251,33 @@ export default function RegisterScreen() {
                             };
 
                             await firebaseService.registerWithEmailAndPassword(email, form.password, userData);
-                            
-                            // Automatically login after registration
-                            await firebaseService.loginWithEmailAndPassword(email, form.password);
 
-                            // Success message
-                            Alert.alert(
-                                'ברוכים הבאים! 🎉',
-                                'ההרשמה הושלמה בהצלחה! אתה יכול כעת להתחיל להשתמש באפליקציה.',
-                                [
-                                    {
-                                        text: 'התחל',
-                                        onPress: () => router.replace('/(tabs)')
-                                    }
-                                ]
-                            );
+                            if (role === 'admin') {
+                                // Admin is approved immediately
+                                await firebaseService.loginWithEmailAndPassword(email, form.password);
+                                Alert.alert(
+                                    'ברוכים הבאים! 🎉',
+                                    'ההרשמה הושלמה בהצלחה! אתה יכול כעת להתחיל להשתמש באפליקציה.',
+                                    [
+                                        {
+                                            text: 'התחל',
+                                            onPress: () => router.replace('/(tabs)')
+                                        }
+                                    ]
+                                );
+                            } else {
+                                // Clown/organizer require approval
+                                Alert.alert(
+                                    'ההרשמה התקבלה',
+                                    'הבקשה נשלחה לאישור מנהל. לאחר אישור תוכל להתחבר למערכת.',
+                                    [
+                                        {
+                                            text: 'חזרה להתחברות',
+                                            onPress: () => router.replace('/(auth)/login')
+                                        }
+                                    ]
+                                );
+                            }
                         } catch (error: any) {
                             setIsSubmitting(false);
                             console.error('Registration failed:', error);
@@ -491,6 +528,45 @@ export default function RegisterScreen() {
                                 />
                             </View>
                         </View>
+
+                        {role === 'organizer' && (
+                            <View style={styles.inputGroup}>
+                                <View style={styles.labelRow}>
+                                    <Text style={[styles.label, { color: colors.text }]}>מוסד</Text>
+                                    <Text style={[styles.optionalLabel, { color: colors.tabIconDefault }]}>אופציונלי</Text>
+                                </View>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                                    {[...INSTITUTIONS, 'אחר'].map(inst => (
+                                        <TouchableOpacity
+                                            key={inst}
+                                            style={[
+                                                styles.chip,
+                                                form.institution === inst && { backgroundColor: colors.primary, borderColor: colors.primary },
+                                                { borderColor: colors.border, backgroundColor: colors.card }
+                                            ]}
+                                            onPress={() => setForm({ ...form, institution: inst })}
+                                        >
+                                            <Text style={[styles.chipText, form.institution === inst ? { color: '#fff' } : { color: colors.text }]}>
+                                                {inst}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+
+                                {form.institution === 'אחר' && (
+                                    <View style={[styles.inputContainer, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 8 }]}>
+                                        <TextInput
+                                            style={[styles.input, { color: colors.text }]}
+                                            placeholder="הזן שם מוסד"
+                                            placeholderTextColor={colors.tabIconDefault}
+                                            value={form.customInstitution}
+                                            onChangeText={(text) => setForm({ ...form, customInstitution: text })}
+                                            textAlign="right"
+                                        />
+                                    </View>
+                                )}
+                            </View>
+                        )}
 
                         <View style={styles.inputGroup}>
                             <View style={styles.labelRow}>
@@ -832,6 +908,23 @@ const styles = StyleSheet.create({
     },
     inputGroup: {
         marginBottom: 20,
+    },
+    chipRow: {
+        flexDirection: 'row-reverse',
+        paddingVertical: 4,
+    },
+    chip: {
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 18,
+        borderWidth: 1,
+        marginLeft: 8,
+    },
+    chipText: {
+        fontSize: 13,
+        fontWeight: '700',
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     labelRow: {
         flexDirection: 'row-reverse',

@@ -1,7 +1,9 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { AvailabilitySlot } from '../constants/MockData';
 
 Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -14,6 +16,14 @@ Notifications.setNotificationHandler({
 });
 
 class NotificationService {
+    private getAvailabilityReminderKey(userId: string) {
+        return `@availability_reminder_ids_${userId}`;
+    }
+
+    private toSlotDate(slot: AvailabilitySlot) {
+        return new Date(`${slot.date}T${slot.startTime}:00`);
+    }
+
     async registerForPushNotificationsAsync() {
         let token;
 
@@ -80,6 +90,57 @@ class NotificationService {
                 date: triggerDate
             } as Notifications.NotificationTriggerInput,
         });
+    }
+
+    async syncAvailabilitySlotReminders(userId: string, slots: AvailabilitySlot[], enabled: boolean) {
+        const storageKey = this.getAvailabilityReminderKey(userId);
+        const rawIds = await AsyncStorage.getItem(storageKey);
+        const existingIds: string[] = rawIds ? JSON.parse(rawIds) : [];
+
+        await Promise.all(
+            existingIds.map(async (id) => {
+                try {
+                    await Notifications.cancelScheduledNotificationAsync(id);
+                } catch {
+                    // Ignore stale ids that were already removed by the OS.
+                }
+            })
+        );
+
+        if (!enabled) {
+            await AsyncStorage.setItem(storageKey, JSON.stringify([]));
+            return;
+        }
+
+        const now = Date.now();
+        const nextIds: string[] = [];
+
+        for (const slot of slots) {
+            const triggerDate = this.toSlotDate(slot);
+            if (Number.isNaN(triggerDate.getTime()) || triggerDate.getTime() <= now) continue;
+
+            const id = await Notifications.scheduleNotificationAsync({
+                content: {
+                    title: 'תזכורת זמינות',
+                    body: `הזמינות שלך מתחילה ב-${slot.startTime} ב${slot.location}`,
+                    data: {
+                        type: 'availability_slot_reminder',
+                        slotId: slot.id,
+                        slotDate: slot.date,
+                        slotTime: slot.startTime,
+                        location: slot.location,
+                    },
+                    sound: 'default',
+                },
+                trigger: {
+                    type: Notifications.SchedulableTriggerInputTypes.DATE,
+                    date: triggerDate,
+                } as Notifications.NotificationTriggerInput,
+            });
+            nextIds.push(id);
+        }
+
+        await AsyncStorage.setItem(storageKey, JSON.stringify(nextIds));
     }
 
     // Helper to calculate distance between two coordinates in km

@@ -15,9 +15,11 @@ import { useRouter } from 'expo-router';
 interface ActivityCardProps {
     activity: Activity;
     isJoined?: boolean;
+    isPast?: boolean;
+    isNearest?: boolean;
 }
 
-export const ActivityCard: React.FC<ActivityCardProps> = ({ activity, isJoined }) => {
+export const ActivityCard: React.FC<ActivityCardProps> = ({ activity, isJoined, isPast = false, isNearest = false }) => {
     const router = useRouter();
     const { currentUser } = useApp();
     const colorScheme = useColorScheme() ?? 'light';
@@ -32,6 +34,7 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity, isJoined }
     const timeStr = `${format(new Date(activity.endTime), 'HH:mm')} - ${format(startTime, 'HH:mm')}`;
 
     const [participantAvatars, setParticipantAvatars] = useState<string[]>([]);
+    const isCompactPast = isPast;
 
     useEffect(() => {
         let mounted = true;
@@ -67,47 +70,87 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity, isJoined }
         <TouchableOpacity
             activeOpacity={0.7}
             onPress={() => router.push(`/activity/${activity.id}`)}
-            style={[styles.container, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[
+                styles.container,
+                {
+                    backgroundColor: colors.card,
+                    borderColor: isNearest ? colors.success : colors.border,
+                    borderWidth: isNearest ? 2 : 1,
+                    padding: isCompactPast ? 12 : 20,
+                    borderRadius: isCompactPast ? 16 : 24,
+                    marginBottom: isCompactPast ? 10 : 20,
+                    opacity: isCompactPast ? 0.8 : 1,
+                }
+            ]}
         >
-            {activity.imageUrl ? (
-                <Image source={{ uri: activity.imageUrl }} style={styles.cardImage} resizeMode="cover" />
-            ) : null}
-            <View style={styles.header}>
-                <View style={styles.titleContainer}>
-                    <Text style={[styles.title, { color: colors.text }]}>{activity.title}</Text>
-                    {activity.department && (
-                        <View style={[styles.departmentBadge, { backgroundColor: colors.accent + '15' }]}>
-                            <Text style={[styles.departmentText, { color: colors.accent }]}>{activity.department}</Text>
-                        </View>
-                    )}
-                </View>
-                {isJoined && (
-                    <View style={[styles.joinedBadge, { backgroundColor: colors.success + '20' }]}>
-                        <Text style={[styles.joinedText, { color: colors.success }]}>רשום!</Text>
+            <View style={styles.badgesContainer}>
+                {isNearest && (
+                    <View style={[styles.statusBadge, { backgroundColor: colors.success }]}>
+                        <Text style={styles.statusBadgeText}>הקרוב ביותר</Text>
+                    </View>
+                )}
+                {isPast && (
+                    <View style={[styles.pastStatusBadge, { backgroundColor: colors.tabIconDefault }]}>
+                        <Text style={styles.pastStatusBadgeText}>עבר זמנו</Text>
                     </View>
                 )}
             </View>
 
-            <View style={styles.details}>
-                <View style={styles.row}>
+            {activity.imageUrl ? (
+                <Image
+                    source={{ uri: activity.imageUrl }}
+                    style={[
+                        styles.cardImage,
+                        isCompactPast && {
+                            height: 72,
+                            marginHorizontal: -12,
+                            marginTop: -12,
+                            marginBottom: 8,
+                        }
+                    ]}
+                    resizeMode="cover"
+                />
+            ) : null}
+            <View style={[styles.header, isCompactPast && { marginBottom: 8 }]}>
+                <View style={styles.titleContainer}>
+                    <Text style={[styles.title, { color: colors.text }, isCompactPast && { fontSize: 15, marginBottom: 3 }]}>{activity.title}</Text>
+                    {activity.department && (
+                        <View style={[styles.departmentBadge, { backgroundColor: colors.accent + '15' }, isCompactPast && { paddingVertical: 2, paddingHorizontal: 7 }]}>
+                            <Text style={[styles.departmentText, { color: colors.accent }, isCompactPast && { fontSize: 10 }]}>{activity.department}</Text>
+                        </View>
+                    )}
+                </View>
+                {isJoined && (
+                    <View style={[styles.joinedBadge, { backgroundColor: colors.success + '20' }, isCompactPast && { paddingVertical: 4, paddingHorizontal: 8 }]}>
+                        <Text style={[styles.joinedText, { color: colors.success }, isCompactPast && { fontSize: 10 }]}>רשום!</Text>
+                    </View>
+                )}
+            </View>
+
+            <View style={[styles.details, isCompactPast && { marginBottom: 10 }]}>
+                <View style={[styles.row, isCompactPast && { marginBottom: 5 }]}>
                     <Building size={16} color={colors.tabIconDefault} />
-                    <Text style={[styles.detailText, { color: colors.text }]}>{activity.institution}</Text>
+                    <Text style={[styles.detailText, { color: colors.text }, isCompactPast && { fontSize: 12 }]}>{activity.institution}</Text>
                 </View>
-                <View style={styles.row}>
+                <View style={[styles.row, isCompactPast && { marginBottom: 5 }]}>
                     <MapPin size={16} color={colors.tabIconDefault} />
-                    <Text style={[styles.detailText, { color: colors.text }]}>{activity.fullAddress || activity.location}</Text>
+                    <Text style={[styles.detailText, { color: colors.text }, isCompactPast && { fontSize: 11 }]}>{activity.fullAddress || activity.location}</Text>
                 </View>
-                <View style={styles.row}>
+                <View style={[styles.row, isCompactPast && { marginBottom: 4 }]}>
                     <Users size={16} color={colors.playful} />
                     <View style={styles.avatarStack}>
                         {participantAvatars.length === 0 ? (
-                            <Text style={[styles.detailText, { color: colors.tabIconDefault }]}>אין נרשמים עדיין</Text>
+                            <Text style={[styles.detailText, { color: colors.tabIconDefault }, isCompactPast && { fontSize: 11 }]}>אין נרשמים עדיין</Text>
                         ) : (
                             participantAvatars.map((avatar, index) => (
                                 <Image
                                     key={`${avatar}-${index}`}
                                     source={{ uri: avatar }}
-                                    style={[styles.participantAvatar, { right: index * 18 }]}
+                                    style={[
+                                        styles.participantAvatar,
+                                        { right: index * 18 },
+                                        isCompactPast && { width: 20, height: 20, borderRadius: 10 }
+                                    ]}
                                 />
                             ))
                         )}
@@ -115,18 +158,18 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity, isJoined }
                 </View>
             </View>
 
-            <View style={styles.footer}>
+            <View style={[styles.footer, isCompactPast && { paddingTop: 10 }]}>
                 <View style={styles.footerItem}>
                     <CalendarIcon size={14} color={colors.primary} />
-                    <Text style={[styles.footerText, { color: colors.primary }]}>{dateStr}</Text>
+                    <Text style={[styles.footerText, { color: colors.primary }, isCompactPast && { fontSize: 10 }]}>{dateStr}</Text>
                 </View>
                 <View style={styles.footerItem}>
                     <Clock size={14} color={colors.primary} />
-                    <Text style={[styles.footerText, { color: colors.primary }]}>{timeStr}</Text>
+                    <Text style={[styles.footerText, { color: colors.primary }, isCompactPast && { fontSize: 10 }]}>{timeStr}</Text>
                 </View>
                 <View style={styles.footerItem}>
                     <Users size={14} color={colors.playful} />
-                    <Text style={[styles.footerText, { color: colors.playful }]}>
+                    <Text style={[styles.footerText, { color: colors.playful }, isCompactPast && { fontSize: 10 }]}>
                         {activity.participants.length}/{activity.requiredClowns}
                     </Text>
                 </View>
@@ -144,7 +187,7 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity, isJoined }
                         <Text style={[styles.footerText, { 
                             color: isLiked ? colors.error : colors.tabIconDefault,
                             marginRight: 4
-                        }]}>
+                        }, isCompactPast && { fontSize: 10 }]}>
                             {likesCount}
                         </Text>
                     )}
@@ -169,6 +212,39 @@ const styles = StyleSheet.create({
         marginHorizontal: -20,
         marginTop: -20,
         marginBottom: 12,
+    },
+    badgesContainer: {
+        position: 'absolute',
+        top: 12,
+        left: 12,
+        zIndex: 3,
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        gap: 6,
+    },
+    statusBadge: {
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 999,
+    },
+    statusBadgeText: {
+        fontSize: 11,
+        color: '#fff',
+        fontWeight: '900',
+        ...androidTextFix,
+        ...preventFontScaling,
+    },
+    pastStatusBadge: {
+        paddingHorizontal: 7,
+        paddingVertical: 3,
+        borderRadius: 999,
+    },
+    pastStatusBadgeText: {
+        fontSize: 9,
+        color: '#fff',
+        fontWeight: '800',
+        ...androidTextFix,
+        ...preventFontScaling,
     },
     header: {
         flexDirection: 'row-reverse',

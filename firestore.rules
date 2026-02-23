@@ -13,6 +13,15 @@ service cloud.firestore {
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'approved';
     }
 
+    // Supports legacy user docs where document id != auth uid
+    function isSelfUserDoc(userId) {
+      return isSignedIn() && (
+        request.auth.uid == userId ||
+        (exists(/databases/$(database)/documents/users/$(userId)) &&
+         get(/databases/$(database)/documents/users/$(userId)).data.authUid == request.auth.uid)
+      );
+    }
+
     function isAdmin() {
       return isApprovedUser() &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
@@ -24,18 +33,36 @@ service cloud.firestore {
               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
     }
 
-    // Users collection - approved clowns can read all, admins can write
+    // Users collection
     match /users/{userId} {
-      allow read: if isApprovedUser();
-      allow create: if isSignedIn(); // Allow registration
-      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      // Approved users can browse users; each user can always read their own doc
+      allow read: if isApprovedUser() || isSelfUserDoc(userId);
+
+      // New users may only create their own auth-linked doc
+      allow create: if isSignedIn() &&
+                    request.auth.uid == userId &&
+                    request.resource.data.authUid == request.auth.uid;
+
+      // Self updates are allowed except sensitive fields; admin can update anything
+      allow update: if isAdmin() || (
+                      isSelfUserDoc(userId) &&
+                      !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+                        'role',
+                        'approvalStatus',
+                        'approvedBy',
+                        'approvedAt',
+                        'rejectionReason',
+                        'authUid'
+                      ])
+                    );
       allow delete: if isAdmin();
     }
 
     // Pending clowns - only admins can read, anyone can create (registration)
     match /pending_clowns/{clownId} {
       allow read: if isAdmin();
-      allow create: if isSignedIn();
+      allow create: if isSignedIn() &&
+                    request.resource.data.authUid == request.auth.uid;
       allow update, delete: if isAdmin();
     }
 

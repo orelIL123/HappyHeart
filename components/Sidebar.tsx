@@ -1,6 +1,6 @@
 import Colors from '@/constants/Colors';
 import { useRouter } from 'expo-router';
-import { CirclePlay, HelpCircle, LogOut, Settings, Shield, Star, User, X } from 'lucide-react-native';
+import { CirclePlay, HelpCircle, LogOut, Settings, Shield, X } from 'lucide-react-native';
 import React from 'react';
 import { Animated, Dimensions, Image, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useApp } from '../context/AppContext';
@@ -9,7 +9,7 @@ import { useColorScheme } from './useColorScheme';
 const { width } = Dimensions.get('window');
 
 export function Sidebar() {
-    const { sidebarOpen, setSidebarOpen, currentUser, setUserRole, logout } = useApp();
+    const { sidebarOpen, setSidebarOpen, currentUser, logout } = useApp();
     const colorScheme = useColorScheme() ?? 'light';
     const colors = Colors[colorScheme];
     const router = useRouter();
@@ -25,12 +25,6 @@ export function Sidebar() {
     }, [sidebarOpen]);
 
     // Render logic simplified to avoid lint error on private _value
-
-    const roles: { id: 'clown' | 'organizer' | 'admin', label: string, icon: any }[] = [
-        { id: 'clown', label: 'ליצן רפואי', icon: User },
-        { id: 'organizer', label: 'רכז מוסד', icon: Star },
-        { id: 'admin', label: 'מנהל מערכת', icon: Shield },
-    ];
 
     return (
         <View
@@ -56,35 +50,26 @@ export function Sidebar() {
                     <View style={styles.profileInfo}>
                         <Text style={[styles.name, { color: colors.text }]}>{currentUser?.name}</Text>
                         <Text style={[styles.roleLabel, { color: colors.tabIconDefault }]}>
-                            {roles.find(r => r.id === currentUser?.role)?.label}
+                            {currentUser?.role === 'admin' ? 'מנהל מערכת' : currentUser?.role === 'organizer' ? 'רכז מוסד' : 'ליצן רפואי'}
                         </Text>
                     </View>
                 </View>
 
-                <View style={styles.section}>
-                    <Text style={[styles.sectionTitle, { color: colors.tabIconDefault }]}>החלף תפקיד (לצורך דמו)</Text>
-                    {roles.map((role) => (
+                {currentUser?.role === 'admin' && (
+                    <View style={styles.section}>
+                        <Text style={[styles.sectionTitle, { color: colors.tabIconDefault }]}>ניהול</Text>
                         <TouchableOpacity
-                            key={role.id}
-                            style={[
-                                styles.roleButton,
-                                { backgroundColor: currentUser?.role === role.id ? colors.primary + '15' : 'transparent' }
-                            ]}
+                            style={styles.roleButton}
                             onPress={() => {
-                                setUserRole(role.id);
                                 setSidebarOpen(false);
+                                router.push('/(tabs)/admin');
                             }}
                         >
-                            <role.icon size={20} color={currentUser?.role === role.id ? colors.primary : colors.tabIconDefault} />
-                            <Text style={[
-                                styles.roleButtonText,
-                                { color: currentUser?.role === role.id ? colors.primary : colors.text }
-                            ]}>
-                                {role.label}
-                            </Text>
+                            <Shield size={20} color={colors.primary} />
+                            <Text style={[styles.roleButtonText, { color: colors.text }]}>מסך אדמין</Text>
                         </TouchableOpacity>
-                    ))}
-                </View>
+                    </View>
+                )}
 
                 <View style={styles.section}>
                     <Text style={[styles.sectionTitle, { color: colors.tabIconDefault }]}>סיוע לליצן</Text>

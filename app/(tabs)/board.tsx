@@ -2,30 +2,24 @@ import { ActivityCard } from '@/components/ActivityCard';
 import { Header } from '@/components/Header';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
+import { Activity } from '@/constants/MockData';
 import { getRegionForLocation, REGIONS, RegionId } from '@/constants/Regions';
 import { useApp } from '@/context/AppContext';
-import { useLocalSearchParams } from 'expo-router';
-import { CalendarDays, Clock3, Search } from 'lucide-react-native';
+import { CalendarDays, Navigation, Search } from 'lucide-react-native';
 import React, { useMemo, useState } from 'react';
-import { FlatList, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-const pad = (n: number) => String(n).padStart(2, '0');
-const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+type PeriodFilter = 'today' | 'lastWeek' | 'lastMonth' | null;
 
 export default function ActivityBoardScreen() {
   const { activities, currentUser } = useApp();
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
-  const params = useLocalSearchParams<{ date?: string }>();
+  const listRef = React.useRef<FlatList<Activity>>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRegion, setSelectedRegion] = useState<RegionId | null>(null);
-  const [selectedCity, setSelectedCity] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string | null>(params.date || null);
-  const [selectedHour, setSelectedHour] = useState<string | null>(null);
-
-  const cities = useMemo(() => Array.from(new Set(activities.map(a => a.city || a.location))), [activities]);
-  const dateOptions = useMemo(() => Array.from(new Set(activities.map(a => ymd(new Date(a.startTime))))).sort(), [activities]);
+  const [selectedPeriod, setSelectedPeriod] = useState<PeriodFilter>(null);
 
   const filteredActivities = activities.filter(activity => {
     const q = searchQuery.toLowerCase().trim();
@@ -36,15 +30,43 @@ export default function ActivityBoardScreen() {
 
     const city = activity.city || activity.location;
     const matchesRegion = !selectedRegion || getRegionForLocation(city) === selectedRegion;
-    const matchesCity = !selectedCity || city === selectedCity;
 
-    const activityDate = ymd(new Date(activity.startTime));
-    const activityHour = pad(new Date(activity.startTime).getHours());
-    const matchesDate = !selectedDate || activityDate === selectedDate;
-    const matchesHour = !selectedHour || activityHour === selectedHour;
+    const start = new Date(activity.startTime);
+    const now = new Date();
+    const activityDayStart = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const daysDiff = Math.floor((todayStart - activityDayStart) / (1000 * 60 * 60 * 24));
+    const isToday = activityDayStart === todayStart;
+    const inLastWeek = daysDiff >= 0 && daysDiff <= 6;
+    const inLastMonth = daysDiff >= 0 && daysDiff <= 29;
+    const matchesPeriod =
+      !selectedPeriod ||
+      (selectedPeriod === 'today' && isToday) ||
+      (selectedPeriod === 'lastWeek' && inLastWeek) ||
+      (selectedPeriod === 'lastMonth' && inLastMonth);
 
-    return matchesSearch && matchesRegion && matchesCity && matchesDate && matchesHour;
+    return matchesSearch && matchesRegion && matchesPeriod;
   });
+
+  const now = new Date();
+  const nearestUpcomingId = useMemo(() => {
+    const candidates = filteredActivities
+      .filter(activity => new Date(activity.endTime).getTime() >= now.getTime())
+      .map(activity => ({
+        id: activity.id,
+        score: Math.max(0, new Date(activity.startTime).getTime() - now.getTime()),
+      }))
+      .sort((a, b) => a.score - b.score);
+
+    return candidates[0]?.id || null;
+  }, [filteredActivities, now]);
+
+  const jumpToNearest = () => {
+    if (!nearestUpcomingId) return;
+    const targetIndex = filteredActivities.findIndex(activity => activity.id === nearestUpcomingId);
+    if (targetIndex < 0) return;
+    listRef.current?.scrollToIndex({ index: targetIndex, animated: true, viewPosition: 0.1 });
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}> 
@@ -85,82 +107,60 @@ export default function ActivityBoardScreen() {
         </ScrollView>
       </View>
 
-      <View style={styles.cityFilterSection}>
-        <Text style={[styles.filterLabel, { color: colors.tabIconDefault }]}>עיר:</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-          <TouchableOpacity
-            style={[styles.filterChip, !selectedCity && { backgroundColor: colors.primary, borderColor: colors.primary }, { borderColor: colors.border }]}
-            onPress={() => setSelectedCity(null)}
-          >
-            <Text style={[styles.filterText, !selectedCity ? { color: '#fff' } : { color: colors.tabIconDefault }]}>הכל</Text>
-          </TouchableOpacity>
-          {cities.map(city => (
-            <TouchableOpacity
-              key={city}
-              style={[styles.filterChip, selectedCity === city && { backgroundColor: colors.primary, borderColor: colors.primary }, { borderColor: colors.border }]}
-              onPress={() => setSelectedCity(city)}
-            >
-              <Text style={[styles.filterText, selectedCity === city ? { color: '#fff' } : { color: colors.tabIconDefault }]}>{city}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
       <View style={styles.datetimeSection}>
-        <Text style={[styles.filterLabel, { color: colors.tabIconDefault }]}>מועד:</Text>
+        <Text style={[styles.filterLabel, { color: colors.tabIconDefault }]}>מועד פעילות:</Text>
 
         <View style={styles.inlineFilterHeader}>
           <CalendarDays size={14} color={colors.tabIconDefault} />
-          <Text style={[styles.inlineFilterTitle, { color: colors.tabIconDefault }]}>תאריך</Text>
+          <Text style={[styles.inlineFilterTitle, { color: colors.tabIconDefault }]}>טווח זמן</Text>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
           <TouchableOpacity
-            style={[styles.filterChip, !selectedDate && { backgroundColor: colors.accent, borderColor: colors.accent }, { borderColor: colors.border }]}
-            onPress={() => setSelectedDate(null)}
+            style={[styles.filterChip, !selectedPeriod && { backgroundColor: colors.accent, borderColor: colors.accent }, { borderColor: colors.border }]}
+            onPress={() => setSelectedPeriod(null)}
           >
-            <Text style={[styles.filterText, !selectedDate ? { color: '#fff' } : { color: colors.tabIconDefault }]}>הכל</Text>
+            <Text style={[styles.filterText, !selectedPeriod ? { color: '#fff' } : { color: colors.tabIconDefault }]}>הכל</Text>
           </TouchableOpacity>
-          {dateOptions.map(date => (
-            <TouchableOpacity
-              key={date}
-              style={[styles.filterChip, selectedDate === date && { backgroundColor: colors.accent, borderColor: colors.accent }, { borderColor: colors.border }]}
-              onPress={() => setSelectedDate(date)}
-            >
-              <Text style={[styles.filterText, selectedDate === date ? { color: '#fff' } : { color: colors.tabIconDefault }]}>{date}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        <View style={styles.inlineFilterHeader}>
-          <Clock3 size={14} color={colors.tabIconDefault} />
-          <Text style={[styles.inlineFilterTitle, { color: colors.tabIconDefault }]}>שעה</Text>
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
           <TouchableOpacity
-            style={[styles.filterChip, !selectedHour && { backgroundColor: colors.accent, borderColor: colors.accent }, { borderColor: colors.border }]}
-            onPress={() => setSelectedHour(null)}
+            style={[styles.filterChip, selectedPeriod === 'today' && { backgroundColor: colors.accent, borderColor: colors.accent }, { borderColor: colors.border }]}
+            onPress={() => setSelectedPeriod('today')}
           >
-            <Text style={[styles.filterText, !selectedHour ? { color: '#fff' } : { color: colors.tabIconDefault }]}>הכל</Text>
+            <Text style={[styles.filterText, selectedPeriod === 'today' ? { color: '#fff' } : { color: colors.tabIconDefault }]}>היום</Text>
           </TouchableOpacity>
-          {Array.from({ length: 24 }, (_, h) => pad(h)).map(hour => (
-            <TouchableOpacity
-              key={hour}
-              style={[styles.filterChip, selectedHour === hour && { backgroundColor: colors.accent, borderColor: colors.accent }, { borderColor: colors.border }]}
-              onPress={() => setSelectedHour(hour)}
-            >
-              <Text style={[styles.filterText, selectedHour === hour ? { color: '#fff' } : { color: colors.tabIconDefault }]}>{hour}:00</Text>
-            </TouchableOpacity>
-          ))}
+          <TouchableOpacity
+            style={[styles.filterChip, selectedPeriod === 'lastWeek' && { backgroundColor: colors.accent, borderColor: colors.accent }, { borderColor: colors.border }]}
+            onPress={() => setSelectedPeriod('lastWeek')}
+          >
+            <Text style={[styles.filterText, selectedPeriod === 'lastWeek' ? { color: '#fff' } : { color: colors.tabIconDefault }]}>השבוע האחרון</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterChip, selectedPeriod === 'lastMonth' && { backgroundColor: colors.accent, borderColor: colors.accent }, { borderColor: colors.border }]}
+            onPress={() => setSelectedPeriod('lastMonth')}
+          >
+            <Text style={[styles.filterText, selectedPeriod === 'lastMonth' ? { color: '#fff' } : { color: colors.tabIconDefault }]}>החודש האחרון</Text>
+          </TouchableOpacity>
         </ScrollView>
       </View>
 
+      {nearestUpcomingId && (
+        <View style={styles.jumpContainer}>
+          <TouchableOpacity style={[styles.jumpButton, { backgroundColor: colors.success }]} onPress={jumpToNearest}>
+            <Navigation size={16} color="#fff" />
+            <Text style={styles.jumpButtonText}>הקרוב ביותר</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <FlatList
+        ref={listRef}
         data={filteredActivities}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <ActivityCard
             activity={item}
             isJoined={currentUser ? item.participants.includes(currentUser.id) : false}
+            isPast={new Date(item.endTime).getTime() < now.getTime()}
+            isNearest={item.id === nearestUpcomingId}
           />
         )}
         contentContainerStyle={styles.listContent}
@@ -169,6 +169,15 @@ export default function ActivityBoardScreen() {
             <Text style={[styles.emptyText, { color: colors.tabIconDefault }]}>לא נמצאו פעילויות מתאימות</Text>
           </View>
         }
+        onScrollToIndexFailed={(info) => {
+          setTimeout(() => {
+            listRef.current?.scrollToIndex({
+              index: Math.max(0, Math.min(info.index, filteredActivities.length - 1)),
+              animated: true,
+              viewPosition: 0.1,
+            });
+          }, 250);
+        }}
       />
     </View>
   );
@@ -206,9 +215,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter',
   },
-  cityFilterSection: {
-    marginVertical: 4,
-  },
   datetimeSection: {
     marginVertical: 4,
   },
@@ -239,10 +245,30 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: 'Inter',
   },
+  jumpContainer: {
+    paddingHorizontal: 20,
+    marginTop: 2,
+    marginBottom: 8,
+    alignItems: 'flex-start',
+  },
+  jumpButton: {
+    height: 36,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+  },
+  jumpButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '900',
+    fontFamily: 'Inter',
+  },
   listContent: {
     padding: 20,
     paddingTop: 10,
-    paddingBottom: 100,
+    paddingBottom: Platform.OS === 'android' ? 130 : 100,
   },
   emptyContainer: {
     alignItems: 'center',

@@ -1,12 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { auth, db } from '../config/firebaseConfig';
-import { CITY_COORDINATES } from '../constants/Coordinates';
 import { Activity, AvailabilitySlot, User, UserRole } from '../constants/MockData';
 import { DEFAULT_NOTIFICATION_PREFERENCES, NotificationPreferences } from '../constants/NotificationTypes';
-import { firebaseService } from '../services/firebaseService';
+import { getRegionForLocation, RegionId, REGIONS } from '../constants/Regions';
+import { firebaseService, UserAvailability } from '../services/firebaseService';
 import { notificationService } from '../services/notificationService';
 import { pushNotificationService } from '../services/pushNotificationService';
 
@@ -42,8 +42,11 @@ interface AppContextType {
     leaveActivity: (activityId: string) => void;
     createActivity: (activity: Omit<Activity, 'id' | 'participants'>) => Promise<string>;
     isAvailable: boolean;
-    toggleAvailability: (duration: string, location: string, futureSlots?: AvailabilitySlot[]) => void;
+    toggleAvailability: (duration: string, regions: RegionId[], futureSlots?: AvailabilitySlot[]) => void;
+    saveFutureAvailabilitySlots: (slots: AvailabilitySlot[], regions: RegionId[], duration: string) => Promise<void>;
     availabilityDuration: string;
+    availabilityRegions: RegionId[];
+    activeClownsCount: number;
     sidebarOpen: boolean;
     setSidebarOpen: (open: boolean) => void;
     notificationsOpen: boolean;
@@ -68,7 +71,6 @@ interface AppContextType {
     updateNotificationPreferences: (prefs: Partial<NotificationPreferences>) => void;
     registerForNotifications: () => Promise<void>;
     isLoadingSession: boolean;
-    availabilityLocation: string;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -80,7 +82,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const [activities, setActivities] = useState<Activity[]>([]);
     const [isAvailable, setIsAvailable] = useState(false);
     const [availabilityDuration, setAvailabilityDuration] = useState('');
-    const [availabilityLocation, setAvailabilityLocation] = useState('');
+    const [availabilityRegions, setAvailabilityRegions] = useState<RegionId[]>([]);
+    const [activeClownsCount, setActiveClownsCount] = useState(0);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [notificationsOpen, setNotificationsOpen] = useState(false);
     const [notifications, setNotifications] = useState<Array<{
@@ -93,6 +96,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         type?: 'new_activity' | 'activity_update' | 'reminder' | 'urgent' | 'clown_attendance' | 'comment_added' | 'participant_joined';
     }>>([]);
     const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
+    const lastSyncedReminderUserId = useRef<string | null>(null);
+
+    const resolveAvailableUntil = (duration: string, from = new Date()): string | null => {
+        const base = new Date(from);
+        if (duration === '1h') base.setHours(base.getHours() + 1);
+        else if (duration === '2h') base.setHours(base.getHours() + 2);
+        else if (duration === '4h') base.setHours(base.getHours() + 4);
+        else if (duration === 'today') base.setHours(23, 59, 59, 999);
+        else return null;
+        return base.toISOString();
+    };
+
+    const getRegionsFromAvailability = (availability?: UserAvailability, fallbackArea?: string): RegionId[] => {
+        if (availability?.regions && availability.regions.length > 0) {
+            return availability.regions.filter((r): r is RegionId => REGIONS.some(opt => opt.id === r));
+        }
+        const fromLocation = (availability?.location || '')
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean)
+            .map((value) => (REGIONS.some(opt => opt.id === value as RegionId) ? (value as RegionId) : getRegionForLocation(value)));
+        if (fromLocation.length > 0) return Array.from(new Set(fromLocation));
+        return [getRegionForLocation(fallbackArea || 'מרכז')];
+    };
+
+    const isAvailabilityActive = (availability?: UserAvailability): boolean => {
+        if (!availability?.isAvailable) return false;
+
+        const now = Date.now();
+        const explicitUntil = availability.availableUntil ? new Date(availability.availableUntil).getTime() : NaN;
+        if (!Number.isNaN(explicitUntil)) return explicitUntil > now;
+
+        if (!availability.updatedAt || !availability.duration) return false;
+        const updatedAt = new Date(availability.updatedAt);
+        if (Number.isNaN(updatedAt.getTime())) return false;
+        const fallbackUntil = resolveAvailableUntil(availability.duration, updatedAt);
+        if (!fallbackUntil) return false;
+        return new Date(fallbackUntil).getTime() > now;
+    };
 
     // Firebase Auth state listener
     useEffect(() => {
@@ -225,6 +267,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return () => unsubscribe();
     }, [currentUser?.id]);
 
+    useEffect(() => {
+        const loadCurrentUserAvailability = async () => {
+            if (!currentUser?.id) {
+                setIsAvailable(false);
+                setAvailabilityDuration('');
+                setAvailabilityRegions([]);
+                return;
+            }
+            try {
+                const availabilityMap = await firebaseService.getAvailabilitiesByUserIds([currentUser.id]);
+                const availability = availabilityMap[currentUser.id];
+                if (!availability) {
+                    setIsAvailable(false);
+                    setAvailabilityDuration('');
+                    setAvailabilityRegions([]);
+                    return;
+                }
+                const active = isAvailabilityActive(availability);
+                setIsAvailable(active);
+                setAvailabilityDuration(active ? availability.duration : '');
+                setAvailabilityRegions(active ? getRegionsFromAvailability(availability, currentUser.preferredArea) : []);
+            } catch (error) {
+                console.error('Failed loading current user availability:', error);
+            }
+        };
+
+        loadCurrentUserAvailability();
+    }, [currentUser?.id]);
+
+    useEffect(() => {
+        if (!isAuthenticated || !currentUser?.id) {
+            setActiveClownsCount(0);
+            return;
+        }
+
+        const unsubscribe = firebaseService.subscribeToAvailabilities((availabilities) => {
+            const activeCount = availabilities.filter((availability) => isAvailabilityActive(availability)).length;
+            setActiveClownsCount(activeCount);
+        });
+
+        return () => unsubscribe();
+    }, [isAuthenticated, currentUser?.id]);
+
     // Auto-cleanup for admin/organizers
     useEffect(() => {
         const runCleanup = async () => {
@@ -240,6 +325,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             registerForNotifications();
         }
     }, [notificationPreferences.enabled, isAuthenticated]);
+
+    useEffect(() => {
+        if (lastSyncedReminderUserId.current && lastSyncedReminderUserId.current !== currentUser?.id) {
+            notificationService
+                .syncAvailabilitySlotReminders(lastSyncedReminderUserId.current, [], false)
+                .catch((error) => {
+                    console.error('Failed clearing reminders for previous user:', error);
+                });
+        }
+
+        if (!currentUser?.id) {
+            lastSyncedReminderUserId.current = null;
+            return;
+        }
+        lastSyncedReminderUserId.current = currentUser.id;
+
+        const remindersEnabled = notificationPreferences.enabled && notificationPreferences.types.reminder;
+        const slots = currentUser.futureAvailabilitySlots || [];
+
+        notificationService
+            .syncAvailabilitySlotReminders(currentUser.id, slots, remindersEnabled)
+            .catch((error) => {
+                console.error('Failed syncing availability slot reminders:', error);
+            });
+    }, [
+        currentUser?.id,
+        currentUser?.futureAvailabilitySlots,
+        notificationPreferences.enabled,
+        notificationPreferences.types.reminder,
+    ]);
 
     const setUserRole = async (role: UserRole) => {
         if (!currentUser) return;
@@ -362,77 +477,99 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const notifyNearbyClowns = async (activity: Omit<Activity, 'id' | 'participants'>) => {
-        const activityCoords = CITY_COORDINATES[activity.location];
-        if (!activityCoords) return;
-
-        console.log('AppContext: Checking for nearby clowns for activity in', activity.location);
+        const activityRegion = getRegionForLocation(activity.location);
+        console.log('AppContext: Checking available clowns for activity region', activityRegion);
 
         try {
-            // Get all approved clowns from Firestore
             const allUsers = await firebaseService.getAllUsers();
             const clowns = allUsers.filter(user => user.role === 'clown');
-            
-            clowns.forEach(user => {
-                // If it's the current user, use their actual availability location if active
-                let userLocation = user.preferredArea || 'תל אביב';
-                if (currentUser && user.id === currentUser.id && isAvailable && availabilityLocation) {
-                    userLocation = availabilityLocation;
+            const clownIds = clowns.map(c => c.id);
+            const availabilityMap = await firebaseService.getAvailabilitiesByUserIds(clownIds);
+            const tokenList = await firebaseService.getUserPushTokens(clownIds);
+            const tokenByUserId = new Map(tokenList.map(item => [item.userId, item.pushToken]));
+
+            for (const clown of clowns) {
+                const ownAvailability = availabilityMap[clown.id];
+
+                if (!isAvailabilityActive(ownAvailability)) continue;
+
+                const clownRegions = getRegionsFromAvailability(ownAvailability, clown.preferredArea);
+                if (!clownRegions.includes(activityRegion)) continue;
+
+                const isActivityUrgent = (activity as Activity).isUrgent;
+                const title = isActivityUrgent ? 'הקפצה דחופה! 🚨' : 'פעילות מעניינת עבורך! 🎈';
+                const body = isActivityUrgent
+                    ? `צורך מיידי ב${activity.title} ב${activity.institution}. בואו לעזור!`
+                    : `${activity.title} ב${activity.institution}, ${activity.location}`;
+
+                if (currentUser && clown.id === currentUser.id && notificationPreferences.enabled) {
+                    await notificationService.sendLocalNotification(title, body);
                 }
 
-                const userCoords = CITY_COORDINATES[userLocation] || CITY_COORDINATES['תל אביב'];
-                const distance = notificationService.calculateDistance(
-                    activityCoords.latitude,
-                    activityCoords.longitude,
-                    userCoords.latitude,
-                    userCoords.longitude
-                );
+                await firebaseService.createNotification(clown.id, {
+                    type: 'new_activity',
+                    title,
+                    body,
+                    data: { activityTitle: activity.title, location: activity.location, region: activityRegion }
+                });
 
-                console.log(`AppContext: Distance to ${user.name}: ${distance.toFixed(1)}km`);
-
-                // Check if user is within radius OR in preferred region
-                const radius = notificationPreferences.proximityRadius;
-                const isWithinRadius = radius === 0 || distance <= radius;
-
-                // Simple region check (mock logic: if activity city is in a region, check if user prefers that region)
-                // In real app, cities would be mapped to North/South/Center
-                const activityRegion = 'מרכז'; // Mocking all activity locations as Center for this demo
-                const isPreferredRegion = notificationPreferences.types.regionalActivity &&
-                    notificationPreferences.preferredRegions.includes(activityRegion);
-
-                if (isWithinRadius || isPreferredRegion) {
-                    console.log(`AppContext: Notifying ${user.name} - match found!`);
-
-                    // If it's the current user, send a local notification for immediate feedback
-                    if (currentUser && user.id === currentUser.id && notificationPreferences.enabled) {
-                        const isActivityUrgent = (activity as Activity).isUrgent;
-
-                        notificationService.sendLocalNotification(
-                            isActivityUrgent ? 'הקפצה דחופה! 🚨' : 'פעילות מעניינת עבורך! 🎈',
-                            isActivityUrgent
-                                ? `צורך מיידי ב${activity.title} ב${activity.institution}. בואו לעזור!`
-                                : `${activity.title} ב${activity.institution}, ${activity.location}`
-                        );
-                    }
+                const pushToken = tokenByUserId.get(clown.id);
+                if (pushToken) {
+                    await pushNotificationService.sendPushNotification(pushToken, title, body, {
+                        type: 'new_activity',
+                        location: activity.location,
+                        region: activityRegion,
+                    });
                 }
-            });
+            }
         } catch (error) {
             console.error('Error notifying nearby clowns:', error);
         }
     };
 
-    const toggleAvailability = async (duration: string, location: string, futureSlots: AvailabilitySlot[] = []) => {
+    const toggleAvailability = async (duration: string, regions: RegionId[], futureSlots: AvailabilitySlot[] = []) => {
         if (!currentUser) return;
         const nextState = !isAvailable;
         setIsAvailable(nextState);
         setAvailabilityDuration(nextState ? duration : '');
-        setAvailabilityLocation(nextState ? location : '');
+        setAvailabilityRegions(nextState ? regions : []);
+        const locationLabel = (nextState ? regions : []).join(', ');
+        const availableUntil = nextState ? resolveAvailableUntil(duration) : null;
 
         try {
-            await firebaseService.updateAvailability(currentUser.id, nextState, location, duration, futureSlots);
+            await firebaseService.updateAvailability(
+                currentUser.id,
+                nextState,
+                locationLabel,
+                duration,
+                futureSlots,
+                nextState ? regions : [],
+                availableUntil || undefined
+            );
             await firebaseService.updateUser(currentUser.id, { futureAvailabilitySlots: futureSlots });
             setCurrentUser(prev => (prev ? { ...prev, futureAvailabilitySlots: futureSlots } : prev));
         } catch (error) {
             console.error('Error updating availability:', error);
+        }
+    };
+
+    const saveFutureAvailabilitySlots = async (slots: AvailabilitySlot[], regions: RegionId[], duration: string) => {
+        if (!currentUser) return;
+        try {
+            await firebaseService.updateAvailability(
+                currentUser.id,
+                isAvailable,
+                regions.join(', '),
+                duration,
+                slots,
+                regions,
+                isAvailable ? resolveAvailableUntil(duration) || undefined : undefined
+            );
+            await firebaseService.updateUser(currentUser.id, { futureAvailabilitySlots: slots });
+            setCurrentUser(prev => (prev ? { ...prev, futureAvailabilitySlots: slots } : prev));
+        } catch (error) {
+            console.error('Error saving future availability slots:', error);
+            throw error;
         }
     };
 
@@ -568,7 +705,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             createActivity,
             isAvailable,
             toggleAvailability,
+            saveFutureAvailabilitySlots,
             availabilityDuration,
+            availabilityRegions,
+            activeClownsCount,
             sidebarOpen,
             setSidebarOpen,
             notificationsOpen,
@@ -584,8 +724,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             approveClown,
             rejectClown,
             updateUserProfile,
-            isLoadingSession,
-            availabilityLocation
+            isLoadingSession
         }}>
             {children}
         </AppContext.Provider>

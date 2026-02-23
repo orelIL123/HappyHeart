@@ -24,6 +24,18 @@ import {
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { auth, db, storage } from '../config/firebaseConfig';
 import { Activity, AvailabilitySlot, Comment, User } from '../constants/MockData';
+import { RegionId } from '../constants/Regions';
+
+export interface UserAvailability {
+    userId: string;
+    isAvailable: boolean;
+    location: string;
+    regions?: RegionId[];
+    duration: string;
+    futureSlots: AvailabilitySlot[];
+    updatedAt: string;
+    availableUntil?: string;
+}
 
 export const firebaseService = {
     // Activities
@@ -192,13 +204,13 @@ export const firebaseService = {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const authUser = userCredential.user;
 
-            // Store user data directly in users collection as approved
+            // Store user data directly in users collection
             const userRef = doc(db, 'users', authUser.uid);
             await setDoc(userRef, {
                 ...userData,
                 email,
                 authUid: authUser.uid,
-                approvalStatus: 'approved',
+                approvalStatus: userData.approvalStatus || 'pending',
                 role: userData.role || 'clown',
                 createdAt: new Date().toISOString()
             });
@@ -315,17 +327,73 @@ export const firebaseService = {
         isAvailable: boolean,
         location: string,
         duration: string,
-        futureSlots?: AvailabilitySlot[]
+        futureSlots?: AvailabilitySlot[],
+        regions?: RegionId[],
+        availableUntil?: string
     ) => {
         const availabilityRef = doc(db, 'availabilities', userId);
         return await setDoc(availabilityRef, {
             userId,
             isAvailable,
             location,
+            regions: regions || [],
             duration,
             futureSlots: futureSlots || [],
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
+            availableUntil: availableUntil || null,
         });
+    },
+
+    getAvailabilitiesByUserIds: async (userIds: string[]): Promise<Record<string, UserAvailability>> => {
+        if (userIds.length === 0) return {};
+
+        const result: Record<string, UserAvailability> = {};
+        const batchSize = 10;
+        for (let i = 0; i < userIds.length; i += batchSize) {
+            const batch = userIds.slice(i, i + batchSize);
+            const q = query(collection(db, 'availabilities'), where('__name__', 'in', batch));
+            const snapshot = await getDocs(q);
+            snapshot.docs.forEach((d) => {
+                const data = d.data() as UserAvailability;
+                result[d.id] = {
+                    userId: d.id,
+                    isAvailable: Boolean(data.isAvailable),
+                    location: data.location || '',
+                    regions: data.regions || [],
+                    duration: data.duration || '',
+                    futureSlots: data.futureSlots || [],
+                    updatedAt: data.updatedAt || '',
+                    availableUntil: data.availableUntil,
+                };
+            });
+        }
+        return result;
+    },
+
+    subscribeToAvailabilities: (callback: (availabilities: UserAvailability[]) => void) => {
+        const q = collection(db, 'availabilities');
+        return onSnapshot(
+            q,
+            (snapshot) => {
+                const availabilities = snapshot.docs.map((d) => {
+                    const data = d.data() as UserAvailability;
+                    return {
+                        userId: d.id,
+                        isAvailable: Boolean(data.isAvailable),
+                        location: data.location || '',
+                        regions: data.regions || [],
+                        duration: data.duration || '',
+                        futureSlots: data.futureSlots || [],
+                        updatedAt: data.updatedAt || '',
+                        availableUntil: data.availableUntil,
+                    } as UserAvailability;
+                });
+                callback(availabilities);
+            },
+            (error) => {
+                console.error('Firestore Availabilities Subscription Error:', error);
+            }
+        );
     },
 
     // Pending Approvals
@@ -411,16 +479,18 @@ export const firebaseService = {
         });
     },
 
-    uploadProfileImage: async (userId: string, uri: string) => {
+    uploadProfileImage: async (userId: string, uri: string, authUid?: string) => {
         const response = await fetch(uri);
         const blob = await response.blob();
-        const storageRef = ref(storage, `profile_images/${userId}`);
+        const ownerId = authUid || userId;
+        const storageRef = ref(storage, `profile_images/${ownerId}/avatar.jpg`);
         await uploadBytes(storageRef, blob);
         const downloadURL = await getDownloadURL(storageRef);
+        const cacheBustedUrl = `${downloadURL}${downloadURL.includes('?') ? '&' : '?'}v=${Date.now()}`;
 
         // Update user profile with new avatar URL
-        await firebaseService.updateUser(userId, { avatar: downloadURL });
-        return downloadURL;
+        await firebaseService.updateUser(userId, { avatar: cacheBustedUrl });
+        return cacheBustedUrl;
     },
 
     // Likes

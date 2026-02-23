@@ -5,7 +5,7 @@ import { useApp } from '@/context/AppContext';
 import { notificationService } from '@/services/notificationService';
 import { Bell, CheckCircle, Map, MapPin, Moon, ShieldAlert, Timer, Zap } from 'lucide-react-native';
 import React from 'react';
-import { Alert, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 
 export default function SettingsScreen() {
     const { notificationPreferences, updateNotificationPreferences } = useApp();
@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
     },
     contentContainer: {
         padding: 20,
-        paddingBottom: 100,
+        paddingBottom: Platform.OS === 'android' ? 130 : 100,
     },
     header: {
         marginBottom: 30,

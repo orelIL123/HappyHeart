@@ -1,12 +1,14 @@
 import { Header } from '@/components/Header';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { AvailabilitySlot, CITIES } from '@/constants/MockData';
+import { AvailabilitySlot } from '@/constants/MockData';
+import { getRegionForLocation, RegionId, REGIONS } from '@/constants/Regions';
 import { useApp } from '@/context/AppContext';
 import { firebaseService } from '@/services/firebaseService';
+import { notificationService } from '@/services/notificationService';
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Plus, Trash2, Zap } from 'lucide-react-native';
-import React, { useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Platform, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const toYmd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -30,7 +32,15 @@ const buildCalendarCells = (monthDate: Date) => {
 };
 
 export default function AvailabilityScreen() {
-  const { isAvailable, toggleAvailability, availabilityDuration, availabilityLocation, currentUser } = useApp();
+  const {
+    isAvailable,
+    toggleAvailability,
+    saveFutureAvailabilitySlots,
+    availabilityDuration,
+    availabilityRegions,
+    registerForNotifications,
+    currentUser
+  } = useApp();
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
 
@@ -41,18 +51,43 @@ export default function AvailabilityScreen() {
     { id: 'today', label: 'עד סוף היום' },
   ];
 
+  const initialRegion = getRegionForLocation(currentUser?.preferredArea || 'מרכז');
+
   const [selectedDuration, setSelectedDuration] = useState(durations[1].id);
-  const [selectedCity, setSelectedCity] = useState(currentUser?.preferredArea || CITIES[0]);
+  const [selectedRegions, setSelectedRegions] = useState<RegionId[]>([initialRegion]);
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(toYmd(new Date()));
   const [selectedHour, setSelectedHour] = useState('10');
   const [selectedMinute, setSelectedMinute] = useState('00');
   const [slotDuration, setSlotDuration] = useState('2h');
-  const [slotCity, setSlotCity] = useState(currentUser?.preferredArea || CITIES[0]);
+  const [slotRegions, setSlotRegions] = useState<RegionId[]>([initialRegion]);
   const [futureSlots, setFutureSlots] = useState<AvailabilitySlot[]>(currentUser?.futureAvailabilitySlots || []);
 
+  useEffect(() => {
+    setFutureSlots(currentUser?.futureAvailabilitySlots || []);
+  }, [currentUser?.futureAvailabilitySlots]);
+
+  useEffect(() => {
+    if (availabilityRegions.length > 0) {
+      setSelectedRegions(availabilityRegions);
+      setSlotRegions(availabilityRegions);
+    }
+  }, [availabilityRegions]);
+
   const cells = useMemo(() => buildCalendarCells(currentMonth), [currentMonth]);
+
+  const toggleRegion = (
+    current: RegionId[],
+    region: RegionId,
+    setter: React.Dispatch<React.SetStateAction<RegionId[]>>
+  ) => {
+    if (current.includes(region)) {
+      setter(current.filter(r => r !== region));
+      return;
+    }
+    setter([...current, region]);
+  };
 
   const addFutureSlot = () => {
     const now = new Date();
@@ -63,12 +98,17 @@ export default function AvailabilityScreen() {
       return;
     }
 
+    if (slotRegions.length === 0) {
+      Alert.alert('חסר אזור', 'בחר לפחות אזור אחד עבור המועד.');
+      return;
+    }
+
     const newSlot: AvailabilitySlot = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       date: selectedDate,
       startTime: `${selectedHour}:${selectedMinute}`,
       duration: slotDuration,
-      location: slotCity,
+      location: slotRegions.join(', '),
     };
 
     const updated = [...futureSlots, newSlot].sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`));
@@ -81,24 +121,56 @@ export default function AvailabilityScreen() {
   };
 
   const saveAvailabilityNow = () => {
-    toggleAvailability(selectedDuration, selectedCity, futureSlots);
+    if (!isAvailable && selectedRegions.length === 0) {
+      Alert.alert('חסר אזור', 'יש לבחור לפחות אזור אחד לפני הפעלת זמינות.');
+      return;
+    }
+    toggleAvailability(
+      isAvailable ? availabilityDuration || selectedDuration : selectedDuration,
+      isAvailable ? availabilityRegions : selectedRegions,
+      futureSlots
+    );
   };
 
   const persistSlotsOnly = async () => {
     if (!currentUser) return;
+    const regionsToSave = isAvailable ? availabilityRegions : selectedRegions;
+    if (regionsToSave.length === 0) {
+      Alert.alert('חסר אזור', 'יש לבחור לפחות אזור אחד לפני שמירה.');
+      return;
+    }
     try {
-      await firebaseService.updateAvailability(
-        currentUser.id,
-        isAvailable,
-        availabilityLocation || selectedCity,
-        availabilityDuration || selectedDuration,
-        futureSlots
+      await saveFutureAvailabilitySlots(
+        futureSlots,
+        regionsToSave,
+        availabilityDuration || selectedDuration
       );
-      await firebaseService.updateUser(currentUser.id, { futureAvailabilitySlots: futureSlots });
       Alert.alert('נשמר', 'הזמינות העתידית עודכנה בהצלחה.');
     } catch (error) {
-      console.error('Error saving future availability slots:', error);
       Alert.alert('שגיאה', 'לא הצלחנו לשמור את הזמינות העתידית.');
+    }
+  };
+
+  const runNotificationSelfCheck = async () => {
+    if (!currentUser) return;
+    try {
+      await registerForNotifications();
+      const tokenRows = await firebaseService.getUserPushTokens([currentUser.id]);
+      const token = tokenRows[0]?.pushToken;
+
+      await notificationService.sendLocalNotification(
+        'בדיקת התראה 🔔',
+        'זוהי התראת בדיקה אישית ממסך הזמינות.'
+      );
+
+      Alert.alert(
+        'בדיקה הושלמה',
+        token
+          ? 'נמצא טוקן עדכונים והתראת בדיקה נשלחה בהצלחה.'
+          : 'לא נמצא טוקן עדכונים כרגע, אבל התראת בדיקה מקומית נשלחה.'
+      );
+    } catch (error) {
+      Alert.alert('שגיאה', 'בדיקת ההתראות נכשלה. נסה שוב.');
     }
   };
 
@@ -114,7 +186,7 @@ export default function AvailabilityScreen() {
                 <Text style={[styles.statusTitle, { color: colors.text }]}>{isAvailable ? 'אתה זמין להקפצה!' : 'כרגע לא זמין'}</Text>
                 <Text style={[styles.statusSub, { color: colors.tabIconDefault }]}>
                   {isAvailable
-                    ? `נמצא ב${selectedCity} למשך ${durations.find(d => d.id === availabilityDuration)?.label || ''}`
+                    ? `זמין באזורים: ${availabilityRegions.join(', ')} למשך ${durations.find(d => d.id === availabilityDuration)?.label || ''}`
                     : 'הפעל זמינות כדי לקבל התראות על הקפצות באזורך'}
                 </Text>
               </View>
@@ -127,24 +199,31 @@ export default function AvailabilityScreen() {
             </View>
           </View>
 
+          <TouchableOpacity
+            style={[styles.testNotificationButton, { borderColor: colors.primary }]}
+            onPress={runNotificationSelfCheck}
+          >
+            <Text style={[styles.testNotificationText, { color: colors.primary }]}>בדיקת טוקן/התראה</Text>
+          </TouchableOpacity>
+
           {!isAvailable && (
             <View style={styles.settingsSection}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>הגדרות זמינות מיידית</Text>
 
               <View style={styles.settingGroup}>
-                <Text style={[styles.settingLabel, { color: colors.text }]}>בחר מיקום</Text>
+                <Text style={[styles.settingLabel, { color: colors.text }]}>בחר אזורים</Text>
                 <View style={styles.cityGrid}>
-                  {CITIES.map(city => (
+                  {REGIONS.map(region => (
                     <TouchableOpacity
-                      key={city}
+                      key={region.id}
                       style={[
                         styles.cityChip,
-                        selectedCity === city && { backgroundColor: colors.accent, borderColor: colors.accent },
+                        selectedRegions.includes(region.id) && { backgroundColor: colors.accent, borderColor: colors.accent },
                         { borderColor: colors.border }
                       ]}
-                      onPress={() => setSelectedCity(city)}
+                      onPress={() => toggleRegion(selectedRegions, region.id, setSelectedRegions)}
                     >
-                      <Text style={[styles.cityChipText, selectedCity === city ? { color: '#fff' } : { color: colors.text }]}>{city}</Text>
+                      <Text style={[styles.cityChipText, selectedRegions.includes(region.id) ? { color: '#fff' } : { color: colors.text }]}>{region.label}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -262,15 +341,15 @@ export default function AvailabilityScreen() {
               ))}
             </ScrollView>
 
-            <Text style={[styles.settingLabel, { color: colors.text }]}>מיקום</Text>
+            <Text style={[styles.settingLabel, { color: colors.text }]}>אזורים</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollChips}>
-              {CITIES.map(city => (
+              {REGIONS.map(region => (
                 <TouchableOpacity
-                  key={`slot-city-${city}`}
-                  style={[styles.slotChip, { borderColor: colors.border }, slotCity === city && { backgroundColor: colors.accent, borderColor: colors.accent }]}
-                  onPress={() => setSlotCity(city)}
+                  key={`slot-region-${region.id}`}
+                  style={[styles.slotChip, { borderColor: colors.border }, slotRegions.includes(region.id) && { backgroundColor: colors.accent, borderColor: colors.accent }]}
+                  onPress={() => toggleRegion(slotRegions, region.id, setSlotRegions)}
                 >
-                  <Text style={[styles.slotChipText, { color: slotCity === city ? '#fff' : colors.text }]}>{city}</Text>
+                  <Text style={[styles.slotChipText, { color: slotRegions.includes(region.id) ? '#fff' : colors.text }]}>{region.label}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -307,8 +386,8 @@ export default function AvailabilityScreen() {
             <View style={[styles.alertBox, { backgroundColor: colors.success + '10', borderColor: colors.success }]}> 
               <Zap size={24} color={colors.success} fill={colors.success} />
               <View style={{ flex: 1, marginRight: 10 }}>
-                <Text style={[styles.alertText, { color: colors.text }]}>מצב הקפצה פעיל ב{availabilityLocation}!</Text>
-                <Text style={[styles.alertSubText, { color: colors.tabIconDefault }]}>המיקום שלך עודכן כרגע ל{availabilityLocation}. תקבל התראות דחופות לפני כולם באזור זה.</Text>
+                <Text style={[styles.alertText, { color: colors.text }]}>מצב הקפצה פעיל באזורי הבחירה שלך!</Text>
+                <Text style={[styles.alertSubText, { color: colors.tabIconDefault }]}>האזורים הפעילים שלך: {availabilityRegions.join(', ')}. תקבל התראות רק באזורים שסימנת ולזמן שהוגדר.</Text>
               </View>
             </View>
           )}
@@ -324,7 +403,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
-    paddingBottom: 30,
+    paddingBottom: Platform.OS === 'android' ? 130 : 90,
   },
   statusCard: {
     borderRadius: 24,
@@ -359,6 +438,18 @@ const styles = StyleSheet.create({
   settingsSection: {
     marginTop: 2,
     marginBottom: 24,
+  },
+  testNotificationButton: {
+    borderWidth: 1,
+    borderRadius: 12,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  testNotificationText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   sectionTitle: {
     fontSize: 18,

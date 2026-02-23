@@ -13,7 +13,7 @@ interface HeaderProps {
 }
 
 export function Header({ title, showBackButton = true }: HeaderProps) {
-    const { setSidebarOpen, setNotificationsOpen, notifications } = useApp();
+    const { setSidebarOpen, setNotificationsOpen, notifications, activeClownsCount } = useApp();
     const colorScheme = useColorScheme() ?? 'light';
     const colors = Colors[colorScheme];
     const insets = useSafeAreaInsets();
@@ -48,7 +48,15 @@ export function Header({ title, showBackButton = true }: HeaderProps) {
             </Text>
 
             {/* Left side: notifications bell */}
-            <View style={styles.side}>
+            <View style={styles.leftSide}>
+                <TouchableOpacity
+                    style={styles.liveButton}
+                    onPress={() => router.push('/(tabs)/availability')}
+                    activeOpacity={0.85}
+                >
+                    <View style={styles.liveDot} />
+                    <Text style={styles.liveButtonText}>{activeClownsCount} פעילים</Text>
+                </TouchableOpacity>
                 <TouchableOpacity
                     style={[styles.iconButton, { backgroundColor: colors.card, borderColor: colors.border }]}
                     onPress={() => setNotificationsOpen(true)}
@@ -78,6 +86,11 @@ const styles = StyleSheet.create({
         width: 44,
         alignItems: 'center',
     },
+    leftSide: {
+        flexDirection: 'row-reverse',
+        alignItems: 'center',
+        gap: 8,
+    },
     title: {
         flex: 1,
         fontSize: 18,
@@ -92,6 +105,26 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
+    },
+    liveButton: {
+        flexDirection: 'row-reverse',
+        alignItems: 'center',
+        backgroundColor: '#16A34A',
+        borderRadius: 999,
+        paddingHorizontal: 10,
+        height: 32,
+        gap: 6,
+    },
+    liveDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: '#BBF7D0',
+    },
+    liveButtonText: {
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: '800',
     },
     badge: {
         position: 'absolute',

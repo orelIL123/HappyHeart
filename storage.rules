@@ -7,8 +7,13 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    function isApprovedUser() {
+    function userDocExistsByUid() {
       return isSignedIn() &&
+             firestore.exists(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+
+    function isApprovedUser() {
+      return userDocExistsByUid() &&
              firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.approvalStatus == 'approved';
     }
 
@@ -17,15 +22,43 @@ service firebase.storage {
              firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
+    // Supports both modern user docs (id == auth uid) and legacy docs (authUid field)
+    function isOwnerOfUserPath(userId) {
+      return isSignedIn() && (
+        request.auth.uid == userId ||
+        (firestore.exists(/databases/(default)/documents/users/$(userId)) &&
+         firestore.get(/databases/(default)/documents/users/$(userId)).data.authUid == request.auth.uid)
+      );
+    }
+
+    function canManageActivityImage(activityId) {
+      return isSignedIn() && (
+        isAdmin() ||
+        (firestore.exists(/databases/(default)/documents/activities/$(activityId)) &&
+         firestore.get(/databases/(default)/documents/activities/$(activityId)).data.organizerId == request.auth.uid)
+      );
+    }
+
     // Profile images - users can upload their own, all approved users can read
     match /profile_images/{userId} {
-      allow read: if isApprovedUser();
-      allow write: if isSignedIn() && request.auth.uid == userId;
+      allow read: if isApprovedUser() || isOwnerOfUserPath(userId);
+      allow write: if isOwnerOfUserPath(userId);
     }
 
     match /profile_images/{userId}/{fileName} {
+      allow read: if isApprovedUser() || isOwnerOfUserPath(userId);
+      allow write: if isOwnerOfUserPath(userId);
+    }
+
+    // Activity images (kept for compatibility with old app versions)
+    match /activity_images/{activityId} {
       allow read: if isApprovedUser();
-      allow write: if isSignedIn() && request.auth.uid == userId;
+      allow write: if canManageActivityImage(activityId);
+    }
+
+    match /activity_images/{activityId}/{fileName} {
+      allow read: if isApprovedUser();
+      allow write: if canManageActivityImage(activityId);
     }
 
     // Certifications - anyone registering can upload, admins can read

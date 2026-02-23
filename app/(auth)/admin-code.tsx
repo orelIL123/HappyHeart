@@ -1,18 +1,17 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, Platform } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { Header } from '@/components/Header';
 import { preventFontScaling, androidTextFix, createShadow } from '@/constants/AndroidStyles';
 import { Shield, AlertCircle } from 'lucide-react-native';
 
-// Admin code - in production, this should be stored securely
-const ADMIN_CODE = '1234';
+// Master password required for admin registration
+const ADMIN_MASTER_PASSWORD = '895431';
 
 export default function AdminCodeScreen() {
   const router = useRouter();
-  const { role } = useLocalSearchParams();
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
   const [code, setCode] = useState('');
@@ -25,12 +24,12 @@ export default function AdminCodeScreen() {
       return;
     }
 
-    if (code === ADMIN_CODE) {
+    if (code === ADMIN_MASTER_PASSWORD) {
       setCode('');
       setAttempts(0);
       router.push({
         pathname: '/(auth)/register',
-        params: { role: 'admin' }
+        params: { role: 'admin', adminVerified: '1' }
       });
     } else {
       const newAttempts = attempts + 1;
@@ -43,7 +42,7 @@ export default function AdminCodeScreen() {
       } else {
         Alert.alert(
           'שגיאה',
-          `קוד מנהל לא נכון. נסיונות נותרים: ${3 - newAttempts}`
+          `הסיסמה הראשית שגויה. נסיונות נותרים: ${3 - newAttempts}`
         );
       }
     }
@@ -61,17 +60,17 @@ export default function AdminCodeScreen() {
         </View>
 
         <Text style={[styles.title, { color: colors.text }]}>
-          הזן קוד מנהל
+          הזן סיסמה ראשית
         </Text>
 
         <Text style={[styles.subtitle, { color: colors.tabIconDefault }]}>
-          רק מנהלי מערכת מורשים יכולים להירשם עם קוד מיוחד זה
+          רק מי שמחזיק בסיסמה הראשית יכול להירשם כמנהל מערכת
         </Text>
 
         <View style={[styles.warningBox, { backgroundColor: colors.error + '10', borderColor: colors.error + '30' }]}>
           <AlertCircle size={20} color={colors.error} />
           <Text style={[styles.warningText, { color: colors.error }]}>
-            קוד זה נדרש רק להרשמת מנהלי מערכת
+            סיסמה זו נדרשת רק להרשמת מנהלי מערכת
           </Text>
         </View>
 
@@ -85,7 +84,7 @@ export default function AdminCodeScreen() {
               borderWidth: 1,
             }
           ]}
-          placeholder="הזן את הקוד"
+          placeholder="הזן סיסמה ראשית"
           placeholderTextColor={colors.tabIconDefault}
           value={code}
           onChangeText={setCode}

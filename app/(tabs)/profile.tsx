@@ -14,7 +14,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function ProfileScreen() {
-    const { currentUser, logout, approveClown, rejectClown, isLoadingSession, updateUserProfile, activities } = useApp();
+    const { currentUser, logout, approveClown, rejectClown, isLoadingSession, activities, updateUserProfile } = useApp();
     const colorScheme = useColorScheme() ?? 'light';
     const colors = Colors[colorScheme];
     const router = useRouter();
@@ -32,8 +32,16 @@ export default function ProfileScreen() {
         }
     }, [currentUser]);
 
-    const activitiesDone = currentUser ? activities.filter(a => a.participants.includes(currentUser.id)).length : 0;
-    const activitiesCreated = currentUser ? activities.filter(a => a.organizerId === currentUser.id).length : 0;
+    const activitiesDone = currentUser
+        ? (currentUser.role === 'admin'
+            ? activities.reduce((sum, activity) => sum + (activity.participants?.length || 0), 0)
+            : activities.filter(a => a.participants.includes(currentUser.id)).length)
+        : 0;
+    const activitiesCreated = currentUser
+        ? (currentUser.role === 'admin'
+            ? activities.length
+            : activities.filter(a => a.organizerId === currentUser.id).length)
+        : 0;
 
     console.log('ProfileScreen: Rendering, isLoading:', isLoadingSession, 'currentUser:', currentUser?.name);
 
@@ -171,7 +179,11 @@ export default function ProfileScreen() {
         if (!result.canceled && result.assets && result.assets.length > 0) {
             setUploading(true);
             try {
-                const downloadURL = await firebaseService.uploadProfileImage(currentUser.id, result.assets[0].uri);
+                const downloadURL = await firebaseService.uploadProfileImage(
+                    currentUser.id,
+                    result.assets[0].uri,
+                    currentUser.authUid || currentUser.id
+                );
                 await updateUserProfile({ avatar: downloadURL });
                 Alert.alert('הצלחה', 'תמונת הפרופיל עודכנה בהצלחה');
             } catch (error) {
@@ -182,12 +194,6 @@ export default function ProfileScreen() {
             }
         }
     };
-
-    const roles: { id: 'clown' | 'organizer' | 'admin'; label: string }[] = [
-        { id: 'clown', label: 'ליצן רפואי' },
-        { id: 'organizer', label: 'מארגן/רכז' },
-        { id: 'admin', label: 'אדמין' },
-    ];
 
     return (
         <View style={{ flex: 1, backgroundColor: colors.background }}>

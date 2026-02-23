@@ -53,10 +53,18 @@ function RootLayoutNav({ loaded }: { loaded: boolean }) {
   const theme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
   const [updateChecked, setUpdateChecked] = useState(false);
 
+  const safeHideSplash = async () => {
+    try {
+      await SplashScreen.hideAsync();
+    } catch (error) {
+      console.warn('SplashScreen.hideAsync skipped:', error);
+    }
+  };
+
   // Prevent the splash screen from auto-hiding before asset loading and session load are complete.
   useEffect(() => {
     if (loaded && !isLoadingSession) {
-      SplashScreen.hideAsync();
+      safeHideSplash();
     }
   }, [loaded, isLoadingSession]);
 
@@ -64,7 +72,7 @@ function RootLayoutNav({ loaded }: { loaded: boolean }) {
   useEffect(() => {
     const timeout = setTimeout(() => {
       console.log('AppContext: Force hiding splash screen after timeout');
-      SplashScreen.hideAsync();
+      safeHideSplash();
     }, 6000);
 
     return () => clearTimeout(timeout);
