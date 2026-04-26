@@ -50,6 +50,8 @@ export interface Activity {
     expirationDate?: string;
     likes?: string[]; // User IDs who liked this activity
     imageUrl?: string; // Optional activity image
+    videoUrl?: string; // Optional activity video
+    mediaType?: 'image' | 'video';
     approvalStatus?: 'pending' | 'approved' | 'rejected';
     approvedBy?: string;
     approvedAt?: string;
@@ -71,7 +73,7 @@ export const MOCK_USERS: User[] = [
         id: '1',
         name: "ז'קו הליצן",
         role: 'clown',
-        avatar: 'https://i.pravatar.cc/150?u=jacko',
+        avatar: '',
         preferredArea: 'מרכז',
         phone: '0501234567',
         password: '123456',
@@ -81,7 +83,7 @@ export const MOCK_USERS: User[] = [
         id: '2',
         name: 'פופו המארגן',
         role: 'organizer',
-        avatar: 'https://i.pravatar.cc/150?u=fofo',
+        avatar: '',
         preferredArea: 'צפון',
         phone: '0502345678',
         password: '123456',
@@ -91,7 +93,7 @@ export const MOCK_USERS: User[] = [
         id: '3',
         name: 'שמחה האדמינית',
         role: 'admin',
-        avatar: 'https://i.pravatar.cc/150?u=simcha',
+        avatar: '',
         preferredArea: 'ירושלים',
         phone: '0503456789',
         password: '123456',
@@ -101,7 +103,7 @@ export const MOCK_USERS: User[] = [
         id: '4',
         name: 'עמוס סגרון',
         role: 'admin',
-        avatar: 'https://i.pravatar.cc/150?u=amos',
+        avatar: '',
         preferredArea: 'מרכז',
         phone: '0529250237',
         password: '112233',

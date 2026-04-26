@@ -1,5 +1,7 @@
 import {
     createUserWithEmailAndPassword,
+    deleteUser,
+    sendPasswordResetEmail,
     User as FirebaseAuthUser,
     signInWithEmailAndPassword,
     signOut
@@ -21,7 +23,7 @@ import {
     where,
     writeBatch
 } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { auth, db, storage } from '../config/firebaseConfig';
 import { Activity, AvailabilitySlot, Comment, User } from '../constants/MockData';
 import { RegionId } from '../constants/Regions';
@@ -37,7 +39,33 @@ export interface UserAvailability {
     availableUntil?: string;
 }
 
+export interface AppSettings {
+    activityCreationOpenToAll: boolean;
+}
+
+export interface ActivityMediaUpload {
+    uri: string;
+    type: 'image' | 'video';
+    fileName?: string | null;
+    mimeType?: string | null;
+}
+
 export const firebaseService = {
+    getAppSettings: async (): Promise<AppSettings> => {
+        const settingsRef = doc(db, 'app_settings', 'permissions');
+        const settingsSnap = await getDoc(settingsRef);
+        const data = settingsSnap.exists() ? settingsSnap.data() : {};
+
+        return {
+            activityCreationOpenToAll: data.activityCreationOpenToAll === true,
+        };
+    },
+
+    updateAppSettings: async (data: Partial<AppSettings>) => {
+        const settingsRef = doc(db, 'app_settings', 'permissions');
+        return await setDoc(settingsRef, data, { merge: true });
+    },
+
     // Activities
     subscribeToActivities: (callback: (activities: Activity[]) => void) => {
         const q = query(collection(db, 'activities'), orderBy('startTime', 'asc'));
@@ -67,13 +95,40 @@ export const firebaseService = {
     },
 
     uploadActivityImage: async (activityId: string, uri: string): Promise<string> => {
-        const response = await fetch(uri);
+        const downloadURL = await firebaseService.uploadActivityMedia(activityId, {
+            uri,
+            type: 'image',
+            fileName: 'activity-image.jpg',
+            mimeType: 'image/jpeg',
+        });
+        return downloadURL;
+    },
+
+    uploadActivityMedia: async (activityId: string, media: ActivityMediaUpload): Promise<string> => {
+        const response = await fetch(media.uri);
         const blob = await response.blob();
-        const storageRef = ref(storage, `activity_images/${activityId}`);
-        await uploadBytes(storageRef, blob);
+        const fileExtension = media.fileName?.split('.').pop()?.toLowerCase();
+        const safeExtension = fileExtension || (media.type === 'video' ? 'mp4' : 'jpg');
+        const fallbackMimeType = media.type === 'video' ? 'video/mp4' : 'image/jpeg';
+        const storageRef = ref(storage, `activity_media/${activityId}/${media.type}.${safeExtension}`);
+        await uploadBytes(storageRef, blob, {
+            contentType: media.mimeType || blob.type || fallbackMimeType,
+        });
         const downloadURL = await getDownloadURL(storageRef);
         const activityRef = doc(db, 'activities', activityId);
-        await updateDoc(activityRef, { imageUrl: downloadURL });
+
+        if (media.type === 'video') {
+            await updateDoc(activityRef, {
+                videoUrl: downloadURL,
+                mediaType: 'video',
+            });
+        } else {
+            await updateDoc(activityRef, {
+                imageUrl: downloadURL,
+                mediaType: 'image',
+            });
+        }
+
         return downloadURL;
     },
 
@@ -188,6 +243,25 @@ export const firebaseService = {
         }
     },
 
+    requestPasswordReset: async (phoneOrEmail: string): Promise<'email' | 'request'> => {
+        const value = phoneOrEmail.trim();
+        if (!value) {
+            throw new Error('יש להזין אימייל או מספר טלפון');
+        }
+
+        if (value.includes('@')) {
+            await sendPasswordResetEmail(auth, value);
+            return 'email';
+        }
+
+        await addDoc(collection(db, 'password_reset_requests'), {
+            phoneOrEmail: value,
+            status: 'pending',
+            createdAt: new Date().toISOString(),
+        });
+        return 'request';
+    },
+
     // New: Register user in Firebase Auth and directly create approved user
     registerWithEmailAndPassword: async (email: string, password: string, userData: Omit<User, 'id'>): Promise<FirebaseAuthUser> => {
         try {
@@ -249,6 +323,59 @@ export const firebaseService = {
             console.error('Error logging out:', error);
             throw error;
         }
+    },
+
+    /**
+     * Delete the current user's account and all associated data (required by App Store guidelines).
+     * Call while user is still signed in. Deletes Firestore user, availability, notifications,
+     * removes from activity participants, pending_clowns if any, profile image, then Firebase Auth user.
+     */
+    deleteUserAccount: async () => {
+        const user = auth.currentUser;
+        if (!user) throw new Error('לא מחובר');
+        const uid = user.uid;
+
+        // 1. Remove user from all activities' participants
+        const activitiesSnap = await getDocs(
+            query(collection(db, 'activities'), where('participants', 'array-contains', uid))
+        );
+        const batch = writeBatch(db);
+        activitiesSnap.docs.forEach((d) => {
+            batch.update(d.ref, { participants: arrayRemove(uid) });
+        });
+
+        // 2. Delete user's availability doc
+        const availRef = doc(db, 'availabilities', uid);
+        batch.delete(availRef);
+
+        // 3. Delete user's notifications
+        const notifSnap = await getDocs(
+            query(collection(db, 'notifications'), where('userId', '==', uid))
+        );
+        notifSnap.docs.forEach((d) => batch.delete(d.ref));
+
+        // 4. Delete pending_clowns doc if exists (registration not yet approved)
+        const pendingSnap = await getDocs(
+            query(collection(db, 'pending_clowns'), where('authUid', '==', uid))
+        );
+        pendingSnap.docs.forEach((d) => batch.delete(d.ref));
+
+        // 5. Delete user document
+        const userRef = doc(db, 'users', uid);
+        batch.delete(userRef);
+
+        await batch.commit();
+
+        // 6. Delete profile image from Storage (best effort)
+        try {
+            const profileRef = ref(storage, `profile_images/${uid}/avatar.jpg`);
+            await deleteObject(profileRef);
+        } catch (_) {
+            // Ignore if no image or path
+        }
+
+        // 7. Delete Firebase Auth user (must be last; user will be signed out)
+        await deleteUser(user);
     },
 
     // New: Get user by Firebase Auth UID

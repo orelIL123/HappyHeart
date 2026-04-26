@@ -70,6 +70,7 @@ interface AppContextType {
     notificationPreferences: NotificationPreferences;
     updateNotificationPreferences: (prefs: Partial<NotificationPreferences>) => void;
     registerForNotifications: () => Promise<void>;
+    deleteAccount: () => Promise<void>;
     isLoadingSession: boolean;
 }
 
@@ -143,9 +144,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             console.log('AppContext: Auth state changed, user:', firebaseUser?.uid);
 
-            if (firebaseUser) {
-                // User is signed in
-                try {
+            try {
+                if (firebaseUser) {
+                    // User is signed in
                     // Try to get user from Firestore by auth UID (approved users)
                     let user = await firebaseService.getUserByAuthUid(firebaseUser.uid);
 
@@ -161,7 +162,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             setIsAuthenticated(false);
                             setCurrentUser(null);
                             await AsyncStorage.removeItem(AUTH_USER_ID_KEY);
-                            return; // Exit early - user is pending approval
+                            return;
                         }
                     }
 
@@ -189,20 +190,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         setIsAuthenticated(false);
                         setCurrentUser(null);
                     }
-                } catch (error) {
-                    console.error('AppContext: Error loading user from Firestore:', error);
+                } else {
+                    // User is signed out
+                    console.log('AppContext: No authenticated user');
                     setIsAuthenticated(false);
                     setCurrentUser(null);
+                    await AsyncStorage.removeItem(AUTH_USER_ID_KEY);
                 }
-            } else {
-                // User is signed out
-                console.log('AppContext: No authenticated user');
+            } catch (error) {
+                console.error('AppContext: Error loading user from Firestore:', error);
                 setIsAuthenticated(false);
                 setCurrentUser(null);
-                await AsyncStorage.removeItem(AUTH_USER_ID_KEY);
+            } finally {
+                setIsLoadingSession(false);
             }
-
-            setIsLoadingSession(false);
         });
 
         return () => {
@@ -210,6 +211,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             unsubscribe();
         };
     }, []);
+
+    useEffect(() => {
+        if (!isLoadingSession) return;
+
+        const timeout = setTimeout(() => {
+            console.warn('AppContext: Session bootstrap timed out, continuing to app shell');
+            setIsLoadingSession(false);
+        }, 8000);
+
+        return () => clearTimeout(timeout);
+    }, [isLoadingSession]);
 
     useEffect(() => {
         // Subscribe to activities only when user is authenticated and approved
@@ -694,6 +706,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
     };
 
+    const deleteAccount = async () => {
+        try {
+            await firebaseService.deleteUserAccount();
+            setCurrentUser(null);
+            setIsAuthenticated(false);
+            await AsyncStorage.removeItem(AUTH_USER_ID_KEY);
+        } catch (error: any) {
+            console.error('AppContext: Error deleting account:', error);
+            const msg = error?.message || error?.code || 'מחיקת החשבון נכשלה. נסה שוב.';
+            throw new Error(typeof msg === 'string' ? msg : 'מחיקת החשבון נכשלה. נסה שוב.');
+        }
+    };
 
     return (
         <AppContext.Provider value={{
@@ -724,6 +748,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             approveClown,
             rejectClown,
             updateUserProfile,
+            deleteAccount,
             isLoadingSession
         }}>
             {children}

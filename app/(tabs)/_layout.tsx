@@ -5,10 +5,34 @@ import { Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { useApp } from '@/context/AppContext';
+import { firebaseService } from '@/services/firebaseService';
+import { useEffect, useState } from 'react';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme() ?? 'light';
   const { currentUser } = useApp();
+  const [activityCreationOpenToAll, setActivityCreationOpenToAll] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadSettings = async () => {
+      try {
+        const settings = await firebaseService.getAppSettings();
+        if (mounted) {
+          setActivityCreationOpenToAll(settings.activityCreationOpenToAll);
+        }
+      } catch (error) {
+        console.error('Failed to load app settings:', error);
+      }
+    };
+
+    loadSettings();
+
+    return () => {
+      mounted = false;
+    };
+  }, [currentUser?.id]);
 
   return (
     <Tabs
@@ -74,7 +98,7 @@ export default function TabLayout() {
             </View>
           ),
           tabBarButton: (props) => {
-            if (currentUser?.role === 'clown') return null;
+            if (currentUser?.role === 'clown' && !activityCreationOpenToAll) return null;
             return (
               <TouchableOpacity
                 onPress={props.onPress ?? undefined}

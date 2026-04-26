@@ -1,4 +1,5 @@
 import Colors from '@/constants/Colors';
+import { getAvatarSource } from '@/utils/avatar';
 import { useRouter } from 'expo-router';
 import { CirclePlay, HelpCircle, LogOut, Settings, Shield, X } from 'lucide-react-native';
 import React from 'react';
@@ -46,7 +47,10 @@ export function Sidebar() {
                 </View>
 
                 <View style={styles.profileSection}>
-                    <Image source={{ uri: currentUser?.avatar }} style={styles.avatar} />
+                    <Image
+                        source={getAvatarSource(currentUser?.avatar)}
+                        style={styles.avatar}
+                    />
                     <View style={styles.profileInfo}>
                         <Text style={[styles.name, { color: colors.text }]}>{currentUser?.name}</Text>
                         <Text style={[styles.roleLabel, { color: colors.tabIconDefault }]}>
@@ -88,11 +92,23 @@ export function Sidebar() {
                 <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
                 <View style={styles.footer}>
-                    <TouchableOpacity style={styles.footerItem}>
+                    <TouchableOpacity
+                        style={styles.footerItem}
+                        onPress={() => {
+                            setSidebarOpen(false);
+                            router.push('/(tabs)/settings');
+                        }}
+                    >
                         <Settings size={20} color={colors.tabIconDefault} />
                         <Text style={[styles.footerText, { color: colors.text }]}>הגדרות</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.footerItem}>
+                    <TouchableOpacity
+                        style={styles.footerItem}
+                        onPress={() => {
+                            setSidebarOpen(false);
+                            router.push('/clown-help');
+                        }}
+                    >
                         <HelpCircle size={20} color={colors.tabIconDefault} />
                         <Text style={[styles.footerText, { color: colors.text }]}>עזרה ותמיכה</Text>
                     </TouchableOpacity>

@@ -18,6 +18,15 @@
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCIHm9nLoLPC8RDzS0m-iZ_Tuk7_3sqlqo",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "happyapp-b8d4d.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "happyapp-b8d4d",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "happyapp-b8d4d.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "172980019258",
+        "EXPO_PUBLIC_FIREBASE_APP_ID_IOS": "1:172980019258:ios:4f242aa3c2c22a88251503",
+        "EXPO_PUBLIC_FIREBASE_APP_ID_ANDROID": "1:172980019258:android:bb3f0029102d2623251503"
+      },
       "android": {
         "buildType": "apk"
       },
@@ -28,11 +37,22 @@
       "channel": "preview"
     },
     "production": {
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCIHm9nLoLPC8RDzS0m-iZ_Tuk7_3sqlqo",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "happyapp-b8d4d.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "happyapp-b8d4d",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "happyapp-b8d4d.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "172980019258",
+        "EXPO_PUBLIC_FIREBASE_APP_ID_IOS": "1:172980019258:ios:4f242aa3c2c22a88251503",
+        "EXPO_PUBLIC_FIREBASE_APP_ID_ANDROID": "1:172980019258:android:bb3f0029102d2623251503"
+      },
       "android": {
-        "buildType": "apk"
+        "buildType": "app-bundle",
+        "autoIncrement": true
       },
       "ios": {
-        "simulator": false
+        "simulator": false,
+        "autoIncrement": true
       },
       "channel": "production"
     }

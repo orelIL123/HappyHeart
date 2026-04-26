@@ -33,6 +33,11 @@ service cloud.firestore {
               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
     }
 
+    function activityCreationOpenToAll() {
+      return exists(/databases/$(database)/documents/app_settings/permissions) &&
+             get(/databases/$(database)/documents/app_settings/permissions).data.activityCreationOpenToAll == true;
+    }
+
     // Users collection
     match /users/{userId} {
       // Approved users can browse users; each user can always read their own doc
@@ -55,15 +60,16 @@ service cloud.firestore {
                         'authUid'
                       ])
                     );
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || isSelfUserDoc(userId);
     }
 
-    // Pending clowns - only admins can read, anyone can create (registration)
+    // Pending clowns - only admins can read, anyone can create (registration); user can delete own
     match /pending_clowns/{clownId} {
       allow read: if isAdmin();
       allow create: if isSignedIn() &&
                     request.resource.data.authUid == request.auth.uid;
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.authUid == request.auth.uid);
     }
 
     // Activities - role-based visibility and approval workflow
@@ -76,8 +82,8 @@ service cloud.firestore {
         isOrganizer()
       );
       
-      // Create: Only organizers and admins
-      allow create: if isOrganizer();
+      // Create: Organizers/admins always; optionally all approved users if admin enabled it
+      allow create: if isOrganizer() || (isApprovedUser() && activityCreationOpenToAll());
       
       // Update: Organizers can update their own, admins can update any
       allow update: if (isOrganizer() && resource.data.organizerId == request.auth.uid) ||
@@ -120,6 +126,19 @@ service cloud.firestore {
       allow create: if isApprovedUser(); // Allow approved users to create notifications (for other users)
       allow update: if isApprovedUser() && resource.data.userId == request.auth.uid; // Users can mark their own as read
       allow delete: if isApprovedUser() && resource.data.userId == request.auth.uid; // Users can delete their own
+    }
+
+    // Password reset requests - available from the login screen before authentication
+    match /password_reset_requests/{requestId} {
+      allow create: if request.resource.data.phoneOrEmail is string &&
+                    request.resource.data.status == 'pending' &&
+                    request.resource.data.createdAt is string;
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /app_settings/{settingId} {
+      allow read: if isApprovedUser();
+      allow write: if isAdmin();
     }
 
     // Default deny for everything else

@@ -4,11 +4,12 @@ import { Comment, User } from '@/constants/MockData';
 import { useApp } from '@/context/AppContext';
 import { firebaseService } from '@/services/firebaseService';
 import { pushNotificationService } from '@/services/pushNotificationService';
+import { getAvatarSource, sanitizeAvatarUrl } from '@/utils/avatar';
 import { formatPhoneNumber } from '@/utils/phoneFormatter';
 import { format } from 'date-fns';
 import { he } from 'date-fns/locale';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { AlertTriangle, Building, Calendar as CalendarIcon, Clock, Heart, MapPin, MessageCircle, Navigation, Phone as PhoneIcon, Send, Share2, MessageCircle as WhatsAppIcon } from 'lucide-react-native';
+import { AlertTriangle, Building, Calendar as CalendarIcon, Clock, Heart, MapPin, MessageCircle, Navigation, Phone as PhoneIcon, PlayCircle, Send, Share2, MessageCircle as WhatsAppIcon } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
@@ -121,6 +122,11 @@ export default function ActivityDetailsScreen() {
         Linking.openURL(query);
     };
 
+    const handleOpenVideo = () => {
+        if (!activity.videoUrl) return;
+        Linking.openURL(activity.videoUrl);
+    };
+
     const handleToggleLike = async () => {
         if (!currentUser) {
             Alert.alert('נדרש התחברות', 'אנא התחבר כדי לסמן לייק');
@@ -150,7 +156,7 @@ export default function ActivityDetailsScreen() {
                 activity.id,
                 currentUser.id,
                 currentUser.name,
-                currentUser.avatar,
+                sanitizeAvatarUrl(currentUser.avatar),
                 newComment
             );
             setNewComment('');
@@ -313,6 +319,15 @@ export default function ActivityDetailsScreen() {
                     <Text style={[styles.description, { color: colors.text }]}>{activity.description}</Text>
                 </View>
 
+                {activity.videoUrl && (
+                    <View style={styles.section}>
+                        <TouchableOpacity style={[styles.videoButton, { backgroundColor: colors.primary }]} onPress={handleOpenVideo}>
+                            <PlayCircle size={18} color="#fff" />
+                            <Text style={styles.videoButtonText}>פתח סרטון הסבר</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
                 <View style={styles.section}>
                     <TouchableOpacity style={[styles.wazeButton, { backgroundColor: '#33cc66' }]} onPress={handleOpenWaze}>
                         <Navigation size={18} color="#fff" />
@@ -336,7 +351,7 @@ export default function ActivityDetailsScreen() {
                                     onPress={() => setSelectedParticipant(user)}
                                 >
                                     <View style={[styles.avatarGlow, { borderColor: colors.primary + '30' }]}>
-                                        <Image source={{ uri: user.avatar }} style={styles.participantAvatar} />
+                                        <Image source={getAvatarSource(user.avatar)} style={styles.participantAvatar} />
                                     </View>
                                     <View style={[styles.nameBadge, { backgroundColor: colors.card, borderColor: colors.border }]}>
                                         <Text style={[styles.participantName, { color: colors.text }]}>{user.name}</Text>
@@ -388,7 +403,7 @@ export default function ActivityDetailsScreen() {
                                 return (
                                     <View key={comment.id} style={[styles.commentItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
                                         <View style={styles.commentHeader}>
-                                            <Image source={{ uri: comment.userAvatar }} style={styles.commentAvatar} />
+                                            <Image source={getAvatarSource(comment.userAvatar)} style={styles.commentAvatar} />
                                             <View style={styles.commentInfo}>
                                                 <Text style={[styles.commentAuthor, { color: colors.text }]}>{comment.userName}</Text>
                                                 <Text style={[styles.commentDate, { color: colors.tabIconDefault }]}>
@@ -414,7 +429,7 @@ export default function ActivityDetailsScreen() {
                     {/* Add Comment Input */}
                     {currentUser && (
                         <View style={[styles.addCommentContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                            <Image source={{ uri: currentUser.avatar }} style={styles.commentInputAvatar} />
+                            <Image source={getAvatarSource(currentUser.avatar)} style={styles.commentInputAvatar} />
                             <TextInput
                                 style={[styles.commentInput, { color: colors.text, backgroundColor: colors.background }]}
                                 placeholder="הוסף תגובה..."
@@ -451,7 +466,7 @@ export default function ActivityDetailsScreen() {
                         <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
                             {selectedParticipant && (
                                 <>
-                                    <Image source={{ uri: selectedParticipant.avatar }} style={styles.modalAvatar} />
+                                    <Image source={getAvatarSource(selectedParticipant.avatar)} style={styles.modalAvatar} />
                                     <Text style={[styles.modalName, { color: colors.text }]}>{selectedParticipant.name}</Text>
                                     <Text style={[styles.modalRole, { color: colors.tabIconDefault }]}>
                                         {selectedParticipant.role === 'clown' ? 'ליצן רפואי' : 'מארגן פעילות'}
@@ -612,6 +627,19 @@ const styles = StyleSheet.create({
         gap: 8,
     },
     wazeButtonText: {
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '800',
+    },
+    videoButton: {
+        height: 44,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'row-reverse',
+        gap: 8,
+    },
+    videoButtonText: {
         color: '#fff',
         fontSize: 14,
         fontWeight: '800',

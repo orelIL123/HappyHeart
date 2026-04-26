@@ -4,11 +4,11 @@ import { androidButtonFix, androidTextFix, createShadow, preventFontScaling } fr
 import Colors from '@/constants/Colors';
 import { CITIES, INSTITUTIONS, User } from '@/constants/MockData';
 import { useApp } from '@/context/AppContext';
-import { firebaseService } from '@/services/firebaseService';
+import { ActivityMediaUpload, firebaseService } from '@/services/firebaseService';
 import { formatPhoneNumber } from '@/utils/phoneFormatter';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, ArrowRight, Building2, Clock3, FileText, ImagePlus, MapPin, Phone, ShieldAlert, Sparkles, Trash2, Users } from 'lucide-react-native';
+import { ArrowLeft, ArrowRight, Building2, Clock3, FileText, ImagePlus, Phone, PlayCircle, ShieldAlert, Sparkles, Trash2 } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
@@ -36,26 +36,6 @@ export default function CreateActivityScreen() {
   const colors = Colors[colorScheme];
   const router = useRouter();
 
-  if (!currentUser || (currentUser.role !== 'organizer' && currentUser.role !== 'admin')) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.background }}>
-        <Header title="יצירת פעילות" showBackButton={true} />
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <ShieldAlert size={48} color={colors.error} />
-          <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text, marginTop: 16, textAlign: 'center' }}>
-            רק רכזי פעילויות ומנהלים יכולים ליצור פעילויות
-          </Text>
-          <TouchableOpacity
-            style={{ marginTop: 24, paddingHorizontal: 20, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 12 }}
-            onPress={() => router.back()}
-          >
-            <Text style={{ color: '#fff', fontWeight: 'bold' }}>חזור</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-
   const populations = ['ילדים', 'נוער', 'מבוגרים'];
   const dateOptions = useMemo(buildDateOptions, []);
 
@@ -80,12 +60,19 @@ export default function CreateActivityScreen() {
     autoDelete: true,
   });
 
-  const [activityImageUri, setActivityImageUri] = useState<string | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
+  const [activityMedia, setActivityMedia] = useState<ActivityMediaUpload | null>(null);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [coordinators, setCoordinators] = useState<User[]>([]);
+  const [activityCreationOpenToAll, setActivityCreationOpenToAll] = useState(false);
+  const [isLoadingPermissions, setIsLoadingPermissions] = useState(true);
 
   const institutionName = form.institution === 'אחר' ? form.customInstitution.trim() : form.institution;
+  const canCreateActivities = !!currentUser && (
+    currentUser.role === 'admin' ||
+    currentUser.role === 'organizer' ||
+    activityCreationOpenToAll
+  );
 
   useEffect(() => {
     const loadCoordinators = async () => {
@@ -99,19 +86,73 @@ export default function CreateActivityScreen() {
     loadCoordinators();
   }, []);
 
-  const handlePickActivityImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('הרשאה נדרשת', 'נדרשת גישה לגלריה להעלאת תמונה.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [16, 9],
-      quality: 0.8,
-    });
-    if (!result.canceled && result.assets?.[0]) setActivityImageUri(result.assets[0].uri);
+  useEffect(() => {
+    let mounted = true;
+
+    const loadSettings = async () => {
+      try {
+        const settings = await firebaseService.getAppSettings();
+        if (mounted) {
+          setActivityCreationOpenToAll(settings.activityCreationOpenToAll);
+        }
+      } catch (error) {
+        console.error('Failed to load app settings:', error);
+      } finally {
+        if (mounted) {
+          setIsLoadingPermissions(false);
+        }
+      }
+    };
+
+    loadSettings();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const PHOTO_ACCESS_MESSAGE =
+    'האפליקציה משתמשת בגלריה כדי לאפשר לך להעלות תמונות וסרטוני הסבר לפעילויות בתוך האפליקציה.';
+
+  const handlePickActivityMedia = async () => {
+    Alert.alert(
+      'בחירת מדיה',
+      PHOTO_ACCESS_MESSAGE + '\n\nלהמשיך ולאפשר גישה?',
+      [
+        { text: 'ביטול', style: 'cancel' },
+        {
+          text: 'הבנתי, המשך',
+          onPress: async () => {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert('הרשאה נדרשת', 'נדרשת גישה לגלריה להעלאת תמונה או וידאו.');
+              return;
+            }
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ['images', 'videos'],
+              allowsEditing: false,
+              quality: 0.8,
+            });
+            if (!result.canceled && result.assets?.[0]) {
+              const asset = result.assets[0];
+              setActivityMedia({
+                uri: asset.uri,
+                type: asset.type === 'video' ? 'video' : 'image',
+                fileName: asset.fileName,
+                mimeType: asset.mimeType,
+              });
+
+              if (asset.type === 'video' && asset.width && asset.height) {
+                const ratio = asset.width / asset.height;
+                if (Math.abs(ratio - 16 / 9) > 0.2) {
+                  Alert.alert('הערה', 'מומלץ לבחור וידאו ביחס 16:9 כדי שייראה נכון במסך הפעילות.');
+                }
+              }
+            }
+          },
+        },
+      ]
+    );
   };
 
   const validateStep = (targetStep: StepId) => {
@@ -161,6 +202,11 @@ export default function CreateActivityScreen() {
   };
 
   const handleCreate = async () => {
+    if (!currentUser) {
+      Alert.alert('שגיאה', 'נדרשת התחברות כדי לפרסם פעילות.');
+      return;
+    }
+
     if (!form.description || !form.coordinatorName || !form.coordinatorPhone || !form.population || !form.fullAddress || !institutionName) {
       Alert.alert('שגיאה', 'אנא מלא את כל שדות החובה');
       return;
@@ -202,14 +248,15 @@ export default function CreateActivityScreen() {
         approvalStatus,
       });
 
-      if (activityImageUri) {
-        setUploadingImage(true);
+      if (activityMedia) {
+        setUploadingMedia(true);
         try {
-          await firebaseService.uploadActivityImage(activityId, activityImageUri);
-        } catch (imgErr) {
-          console.error('Error uploading activity image:', imgErr);
+          await firebaseService.uploadActivityMedia(activityId, activityMedia);
+        } catch (mediaErr: any) {
+          console.error('Error uploading activity media:', mediaErr);
+          Alert.alert('הפעילות נוצרה', mediaErr?.message || 'המדיה לא עלתה. אפשר להוסיף אותה מחדש בהמשך.');
         } finally {
-          setUploadingImage(false);
+          setUploadingMedia(false);
         }
       }
 
@@ -224,6 +271,40 @@ export default function CreateActivityScreen() {
   };
 
   const stepTitles = ['מוסד ומיקום', 'מועד והרכב', 'פרטי קשר', 'תוכן ומדיה', 'סיכום'];
+
+  if (isLoadingPermissions) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <Header title="יצירת פעילות" showBackButton={true} />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </View>
+    );
+  }
+
+  if (!currentUser || !canCreateActivities) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <Header title="יצירת פעילות" showBackButton={true} />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <ShieldAlert size={48} color={colors.error} />
+          <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text, marginTop: 16, textAlign: 'center' }}>
+            כרגע רק רכזי פעילויות ומנהלים יכולים ליצור פעילויות
+          </Text>
+          <Text style={{ fontSize: 14, color: colors.tabIconDefault, marginTop: 10, textAlign: 'center' }}>
+            מנהל יכול לפתוח את אפשרות הפרסום לכל המשתמשים מתוך ההגדרות.
+          </Text>
+          <TouchableOpacity
+            style={{ marginTop: 24, paddingHorizontal: 20, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 12 }}
+            onPress={() => router.back()}
+          >
+            <Text style={{ color: '#fff', fontWeight: 'bold' }}>חזור</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   const renderStep = () => {
     if (step === 0) {
@@ -441,12 +522,20 @@ export default function CreateActivityScreen() {
             textAlign="right"
           />
 
-          <Text style={[styles.label, { color: colors.text }]}>תמונה (לא חובה)</Text>
-          <TouchableOpacity style={[styles.imagePickerBox, { backgroundColor: colors.background, borderColor: colors.border }]} onPress={handlePickActivityImage} disabled={uploadingImage}>
-            {activityImageUri ? (
+          <Text style={[styles.label, { color: colors.text }]}>תמונה או וידאו הסבר 16:9 (לא חובה)</Text>
+          <TouchableOpacity style={[styles.imagePickerBox, { backgroundColor: colors.background, borderColor: colors.border }]} onPress={handlePickActivityMedia} disabled={uploadingMedia}>
+            {activityMedia ? (
               <>
-                <Image source={{ uri: activityImageUri }} style={styles.pickedImage} resizeMode="cover" />
-                {uploadingImage && (
+                {activityMedia.type === 'image' ? (
+                  <Image source={{ uri: activityMedia.uri }} style={styles.pickedImage} resizeMode="cover" />
+                ) : (
+                  <View style={styles.videoPlaceholder}>
+                    <PlayCircle size={44} color={colors.primary} />
+                    <Text style={[styles.videoPlaceholderTitle, { color: colors.text }]}>נבחר וידאו להסבר</Text>
+                    <Text style={[styles.videoPlaceholderText, { color: colors.tabIconDefault }]}>הסרטון יעלה יחד עם הפעילות וייפתח מכרטיס הפעילות</Text>
+                  </View>
+                )}
+                {uploadingMedia && (
                   <View style={[StyleSheet.absoluteFill, styles.imageUploadOverlay]}>
                     <ActivityIndicator color="#fff" />
                   </View>
@@ -455,7 +544,7 @@ export default function CreateActivityScreen() {
             ) : (
               <View style={styles.imagePickerPlaceholder}>
                 <ImagePlus size={34} color={colors.tabIconDefault} />
-                <Text style={[styles.imagePickerText, { color: colors.tabIconDefault }]}>לחץ להוספת תמונה</Text>
+                <Text style={[styles.imagePickerText, { color: colors.tabIconDefault }]}>לחץ להוספת תמונה או וידאו</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -474,7 +563,7 @@ export default function CreateActivityScreen() {
           <Text style={[styles.summaryMeta, { color: colors.tabIconDefault }]}>{`ליצנים: ${form.requiredClowns}`}</Text>
         </View>
 
-        <TouchableOpacity style={[styles.publishButton, { backgroundColor: colors.primary }, isSubmitting && { opacity: 0.7 }]} onPress={handleCreate} disabled={isSubmitting || uploadingImage}>
+        <TouchableOpacity style={[styles.publishButton, { backgroundColor: colors.primary }, isSubmitting && { opacity: 0.7 }]} onPress={handleCreate} disabled={isSubmitting || uploadingMedia}>
           {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.publishButtonText}>פרסם פעילות</Text>}
         </TouchableOpacity>
       </View>
@@ -709,6 +798,27 @@ const styles = StyleSheet.create({
   imagePickerText: {
     marginTop: 8,
     fontSize: 14,
+    ...androidTextFix,
+    ...preventFontScaling,
+  },
+  videoPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  videoPlaceholderTitle: {
+    marginTop: 10,
+    fontSize: 16,
+    fontWeight: '800',
+    ...androidTextFix,
+    ...preventFontScaling,
+  },
+  videoPlaceholderText: {
+    marginTop: 6,
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
     ...androidTextFix,
     ...preventFontScaling,
   },

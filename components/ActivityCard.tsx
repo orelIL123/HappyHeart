@@ -4,12 +4,13 @@ import Colors from '@/constants/Colors';
 import { Activity } from '@/constants/MockData';
 import { format } from 'date-fns';
 import { he } from 'date-fns/locale';
-import { Building, Calendar as CalendarIcon, Clock, Heart, MapPin, Users } from 'lucide-react-native';
+import { Building, Calendar as CalendarIcon, Clock, Heart, MapPin, PlayCircle, Users } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { useApp } from '@/context/AppContext';
 import { firebaseService } from '@/services/firebaseService';
+import { sanitizeAvatarUrl } from '@/utils/avatar';
 import { useRouter } from 'expo-router';
 
 interface ActivityCardProps {
@@ -46,7 +47,7 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity, isJoined, 
             try {
                 const users = await firebaseService.getUsersByIds(activity.participants.slice(0, 4));
                 if (mounted) {
-                    setParticipantAvatars(users.map(user => user.avatar).filter(Boolean));
+                    setParticipantAvatars(users.map(user => sanitizeAvatarUrl(user.avatar)).filter(Boolean));
                 }
             } catch (error) {
                 console.error('Error loading participant avatars:', error);
@@ -114,9 +115,19 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity, isJoined, 
             <View style={[styles.header, isCompactPast && { marginBottom: 8 }]}>
                 <View style={styles.titleContainer}>
                     <Text style={[styles.title, { color: colors.text }, isCompactPast && { fontSize: 15, marginBottom: 3 }]}>{activity.title}</Text>
-                    {activity.department && (
-                        <View style={[styles.departmentBadge, { backgroundColor: colors.accent + '15' }, isCompactPast && { paddingVertical: 2, paddingHorizontal: 7 }]}>
-                            <Text style={[styles.departmentText, { color: colors.accent }, isCompactPast && { fontSize: 10 }]}>{activity.department}</Text>
+                    {(activity.department || activity.videoUrl) && (
+                        <View style={styles.metaBadgesRow}>
+                            {activity.department && (
+                                <View style={[styles.departmentBadge, { backgroundColor: colors.accent + '15' }, isCompactPast && { paddingVertical: 2, paddingHorizontal: 7 }]}>
+                                    <Text style={[styles.departmentText, { color: colors.accent }, isCompactPast && { fontSize: 10 }]}>{activity.department}</Text>
+                                </View>
+                            )}
+                            {activity.videoUrl && (
+                                <View style={[styles.departmentBadge, styles.mediaBadge, { backgroundColor: colors.primary + '15' }, isCompactPast && { paddingVertical: 2, paddingHorizontal: 7 }]}>
+                                    <PlayCircle size={12} color={colors.primary} />
+                                    <Text style={[styles.departmentText, { color: colors.primary }, isCompactPast && { fontSize: 10 }]}>וידאו</Text>
+                                </View>
+                            )}
                         </View>
                     )}
                 </View>
@@ -256,6 +267,11 @@ const styles = StyleSheet.create({
         flex: 1,
         alignItems: 'flex-end',
     },
+    metaBadgesRow: {
+        flexDirection: 'row-reverse',
+        alignItems: 'center',
+        gap: 6,
+    },
     title: {
         fontSize: 20,
         fontWeight: '900',
@@ -269,6 +285,11 @@ const styles = StyleSheet.create({
         paddingHorizontal: 10,
         paddingVertical: 4,
         borderRadius: 10,
+    },
+    mediaBadge: {
+        flexDirection: 'row-reverse',
+        alignItems: 'center',
+        gap: 4,
     },
     departmentText: {
         fontSize: 12,

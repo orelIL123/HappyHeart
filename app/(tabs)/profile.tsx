@@ -6,12 +6,12 @@ import Colors from '@/constants/Colors';
 import { User } from '@/constants/MockData';
 import { useApp } from '@/context/AppContext';
 import { firebaseService } from '@/services/firebaseService';
+import { getAvatarSource } from '@/utils/avatar';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import * as Updates from 'expo-updates';
-import { Award, Bell, Calendar, ChevronLeft, Info, LogOut, PlusCircle, RefreshCw, Users } from 'lucide-react-native';
+import { Award, Bell, Calendar, ChevronLeft, Info, LogOut, PlusCircle, Users } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function ProfileScreen() {
     const { currentUser, logout, approveClown, rejectClown, isLoadingSession, activities, updateUserProfile } = useApp();
@@ -21,7 +21,6 @@ export default function ProfileScreen() {
 
     const [pendingClowns, setPendingClowns] = useState<User[]>([]);
     const [uploading, setUploading] = useState(false);
-    const [checkingUpdate, setCheckingUpdate] = useState(false);
 
     useEffect(() => {
         if (currentUser?.role === 'admin') {
@@ -53,71 +52,6 @@ export default function ProfileScreen() {
             </View>
         );
     }
-
-    const handleCheckForUpdates = async () => {
-        if (__DEV__) {
-            Alert.alert('מצב פיתוח', 'בדיקת עדכונים לא זמינה במצב פיתוח');
-            return;
-        }
-
-        if (!Updates.isEnabled) {
-            Alert.alert('לא זמין', 'עדכונים אוטומטיים לא מופעלים באפליקציה זו');
-            return;
-        }
-
-        setCheckingUpdate(true);
-
-        try {
-            console.log('Checking for updates manually...');
-            const update = await Updates.checkForUpdateAsync();
-
-            if (update.isAvailable) {
-                Alert.alert(
-                    'עדכון זמין! 🎉',
-                    'נמצא עדכון חדש לאפליקציה. האם להוריד ולהתקין?',
-                    [
-                        {
-                            text: 'ביטול',
-                            style: 'cancel',
-                            onPress: () => setCheckingUpdate(false)
-                        },
-                        {
-                            text: 'הורד והתקן',
-                            onPress: async () => {
-                                try {
-                                    console.log('Downloading update...');
-                                    await Updates.fetchUpdateAsync();
-                                    console.log('Update downloaded! Reloading...');
-
-                                    Alert.alert(
-                                        'העדכון הותקן! ✅',
-                                        'האפליקציה תתחיל מחדש כדי להחיל את העדכון',
-                                        [
-                                            {
-                                                text: 'אישור',
-                                                onPress: () => Updates.reloadAsync()
-                                            }
-                                        ]
-                                    );
-                                } catch (error) {
-                                    console.error('Error downloading update:', error);
-                                    Alert.alert('שגיאה', 'חלה שגיאה בהורדת העדכון. נסה שוב מאוחר יותר');
-                                    setCheckingUpdate(false);
-                                }
-                            }
-                        }
-                    ]
-                );
-            } else {
-                Alert.alert('אין עדכונים 👍', 'האפליקציה מעודכנת לגרסה האחרונה!');
-                setCheckingUpdate(false);
-            }
-        } catch (error) {
-            console.error('Error checking for updates:', error);
-            Alert.alert('שגיאה', 'חלה שגיאה בבדיקת עדכונים. בדוק את החיבור לאינטרנט ונסה שוב');
-            setCheckingUpdate(false);
-        }
-    };
 
     const handleApprove = async (clown: User) => {
         Alert.alert(
@@ -162,13 +96,31 @@ export default function ProfileScreen() {
         );
     };
 
-    const handlePickImage = async () => {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-            Alert.alert('שגיאה', 'מצטערים, אנחנו צריכים גישה לגלריה כדי לשנות את התמונה');
-            return;
-        }
+    const PHOTO_ACCESS_MESSAGE =
+        'האפליקציה משתמשת בגלריה כדי לאפשר לך להעלות תמונת פרופיל ולצרף תמונות לפעילויות בתוך האפליקציה.';
 
+    const handlePickImage = async () => {
+        Alert.alert(
+            'גישה לגלריה',
+            PHOTO_ACCESS_MESSAGE + '\n\nלהמשיך ולאפשר גישה?',
+            [
+                { text: 'ביטול', style: 'cancel' },
+                {
+                    text: 'הבנתי, המשך',
+                    onPress: async () => {
+                        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                        if (status !== 'granted') {
+                            Alert.alert('שגיאה', 'מצטערים, אנחנו צריכים גישה לגלריה כדי לשנות את התמונה');
+                            return;
+                        }
+                        openImagePicker();
+                    },
+                },
+            ]
+        );
+    };
+
+    const openImagePicker = async () => {
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ['images'],
             allowsEditing: true,
@@ -195,6 +147,21 @@ export default function ProfileScreen() {
         }
     };
 
+    const handleOpenCertification = async () => {
+        if (!currentUser.certificationUrl) {
+            Alert.alert('אין תעודה להצגה', 'עדיין לא הועלתה תעודת ליצן רפואי לחשבון הזה.');
+            return;
+        }
+
+        try {
+            await Linking.openURL(currentUser.certificationUrl);
+        } catch (error) {
+            console.error('Failed to open certification URL:', error);
+            Alert.alert('שגיאה', 'לא הצלחנו לפתוח את התעודה כרגע.');
+        }
+    };
+
+
     return (
         <View style={{ flex: 1, backgroundColor: colors.background }}>
             <Header title="פרופיל" showBackButton={false} />
@@ -205,7 +172,7 @@ export default function ProfileScreen() {
                         onPress={handlePickImage}
                         disabled={uploading}
                     >
-                        <Image source={{ uri: currentUser.avatar }} style={styles.avatar} />
+                        <Image source={getAvatarSource(currentUser.avatar)} style={styles.avatar} />
                         {uploading && (
                             <View style={[StyleSheet.absoluteFill, styles.uploadOverlay]}>
                                 <ActivityIndicator color="#fff" />
@@ -274,7 +241,10 @@ export default function ProfileScreen() {
                 <View style={styles.section}>
                     <Text style={[styles.sectionTitle, { color: colors.text }]}>מידע וניהול</Text>
 
-                    <TouchableOpacity style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <TouchableOpacity
+                        style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.border }]}
+                        onPress={handleOpenCertification}
+                    >
                         <View style={styles.menuItemContent}>
                             <View style={[styles.menuIconContainer, { backgroundColor: colors.accent + '15' }]}>
                                 <Info size={20} color={colors.accent} />
@@ -293,26 +263,6 @@ export default function ProfileScreen() {
                                 <Bell size={20} color={colors.primary} />
                             </View>
                             <Text style={[styles.menuItemText, { color: colors.text }]}>הגדרות התראות</Text>
-                        </View>
-                        <ChevronLeft size={20} color={colors.tabIconDefault} />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 12 }]}
-                        onPress={handleCheckForUpdates}
-                        disabled={checkingUpdate}
-                    >
-                        <View style={styles.menuItemContent}>
-                            <View style={[styles.menuIconContainer, { backgroundColor: colors.secondary + '15' }]}>
-                                {checkingUpdate ? (
-                                    <ActivityIndicator size="small" color={colors.secondary} />
-                                ) : (
-                                    <RefreshCw size={20} color={colors.secondary} />
-                                )}
-                            </View>
-                            <Text style={[styles.menuItemText, { color: colors.text }]}>
-                                {checkingUpdate ? 'בודק עדכונים...' : 'בדוק עדכונים'}
-                            </Text>
                         </View>
                         <ChevronLeft size={20} color={colors.tabIconDefault} />
                     </TouchableOpacity>

@@ -106,31 +106,42 @@ export default function RegisterScreen() {
                 {
                     text: 'תמונה',
                     onPress: async () => {
-                        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-                        if (status !== 'granted') {
-                            Alert.alert(
-                                'הרשאה נדרשת',
-                                'אנחנו צריכים גישה לגלריה כדי להעלות תמונה. אנא אפשר גישה בהגדרות המכשיר.',
-                                [{ text: 'הבנתי' }]
-                            );
-                            return;
-                        }
-
-                        const result = await ImagePicker.launchImageLibraryAsync({
-                            mediaTypes: ['images'],
-                            allowsEditing: true,
-                            quality: 0.8,
-                        });
-
-                        if (!result.canceled && result.assets && result.assets.length > 0) {
-                            setCertificationFile({
-                                uri: result.assets[0].uri,
-                                name: result.assets[0].fileName || 'certification.jpg',
-                                type: 'image'
-                            });
-                            setFormErrors({ ...formErrors, certification: '' });
-                        }
-                    }
+                        const photoMessage = 'האפליקציה משתמשת בגלריה כדי לאפשר לך להעלות תמונת פרופיל ולצרף תמונות לפעילויות בתוך האפליקציה.';
+                        Alert.alert(
+                            'גישה לגלריה',
+                            photoMessage + '\n\nלהמשיך ולאפשר גישה?',
+                            [
+                                { text: 'ביטול', style: 'cancel' },
+                                {
+                                    text: 'הבנתי, המשך',
+                                    onPress: async () => {
+                                        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                                        if (status !== 'granted') {
+                                            Alert.alert(
+                                                'הרשאה נדרשת',
+                                                'אנחנו צריכים גישה לגלריה כדי להעלות תמונה. אנא אפשר גישה בהגדרות המכשיר.',
+                                                [{ text: 'הבנתי' }]
+                                            );
+                                            return;
+                                        }
+                                        const result = await ImagePicker.launchImageLibraryAsync({
+                                            mediaTypes: ['images'],
+                                            allowsEditing: true,
+                                            quality: 0.8,
+                                        });
+                                        if (!result.canceled && result.assets && result.assets.length > 0) {
+                                            setCertificationFile({
+                                                uri: result.assets[0].uri,
+                                                name: result.assets[0].fileName || 'certification.jpg',
+                                                type: 'image'
+                                            });
+                                            setFormErrors((prev) => ({ ...prev, certification: '' }));
+                                        }
+                                    },
+                                },
+                            ]
+                        );
+                    },
                 },
                 {
                     text: 'PDF',
@@ -244,7 +255,7 @@ export default function RegisterScreen() {
                                     ? (form.institution === 'אחר' ? form.customInstitution.trim() : form.institution.trim())
                                     : '',
                                 role: role,
-                                avatar: 'https://i.pravatar.cc/150?u=' + encodeURIComponent(form.name),
+                                avatar: '',
                                 approvalStatus: role === 'admin' ? ('approved' as const) : ('pending' as const),
                                 registrationDate: new Date().toISOString(),
                                 ...(certificationUrl && { certificationUrl })

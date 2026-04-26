@@ -1,2 +1,17 @@
+node_modules/
+.expo/
+dist/
+dist-ios-export/
+web-build/
+ios/
+android/
+.firebase/
+.qodo/
+.claude/
+.vscode/
+.DS_Store
+*.log
+*.tmp
+*.orig.*
 .env
 .env.*

@@ -1,6 +1,7 @@
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { createShadow, androidTextFix, preventFontScaling, androidButtonFix } from '@/constants/AndroidStyles';
+import { getAvatarSource } from '@/utils/avatar';
 import { Check, FileText, MapPin, Phone, X, MessageCircle } from 'lucide-react-native';
 import React from 'react';
 import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -52,7 +53,7 @@ export const PendingClownCard: React.FC<PendingClownCardProps> = ({ clown, onApp
                         <Text style={[styles.location, { color: colors.tabIconDefault }]}>{clown.preferredArea}</Text>
                     </View>
                 </View>
-                <Image source={{ uri: clown.avatar || 'https://i.pravatar.cc/150?u=' + clown.name }} style={styles.avatar} />
+                <Image source={getAvatarSource(clown.avatar)} style={styles.avatar} />
             </View>
 
             <View style={styles.contactRow}>

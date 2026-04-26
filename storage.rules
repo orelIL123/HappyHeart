@@ -61,6 +61,11 @@ service firebase.storage {
       allow write: if canManageActivityImage(activityId);
     }
 
+    match /activity_media/{activityId}/{fileName} {
+      allow read: if isApprovedUser();
+      allow write: if canManageActivityImage(activityId);
+    }
+
     // Certifications - anyone registering can upload, admins can read
     match /certifications/{fileName} {
       allow read: if isAdmin();

@@ -3,14 +3,45 @@ import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { useApp } from '@/context/AppContext';
 import { notificationService } from '@/services/notificationService';
-import { Bell, CheckCircle, Map, MapPin, Moon, ShieldAlert, Timer, Zap } from 'lucide-react-native';
-import React from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { firebaseService } from '@/services/firebaseService';
+import { Bell, CheckCircle, Map, MapPin, Moon, ShieldAlert, Timer, Trash2, Zap } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 
 export default function SettingsScreen() {
-    const { notificationPreferences, updateNotificationPreferences } = useApp();
+    const { currentUser, notificationPreferences, updateNotificationPreferences, deleteAccount } = useApp();
     const colorScheme = useColorScheme() ?? 'light';
     const colors = Colors[colorScheme];
+    const [activityCreationOpenToAll, setActivityCreationOpenToAll] = useState(false);
+    const [loadingPermissions, setLoadingPermissions] = useState(false);
+    const [savingPermissions, setSavingPermissions] = useState(false);
+
+    useEffect(() => {
+        let mounted = true;
+
+        const loadPermissions = async () => {
+            if (currentUser?.role !== 'admin') return;
+            setLoadingPermissions(true);
+            try {
+                const settings = await firebaseService.getAppSettings();
+                if (mounted) {
+                    setActivityCreationOpenToAll(settings.activityCreationOpenToAll);
+                }
+            } catch (error) {
+                console.error('Failed to load app settings:', error);
+            } finally {
+                if (mounted) {
+                    setLoadingPermissions(false);
+                }
+            }
+        };
+
+        loadPermissions();
+
+        return () => {
+            mounted = false;
+        };
+    }, [currentUser?.role]);
 
     const toggleMainEnabled = (value: boolean) => {
         updateNotificationPreferences({ enabled: value });
@@ -58,6 +89,56 @@ export default function SettingsScreen() {
         });
     };
 
+    const handleDeleteAccount = () => {
+        Alert.alert(
+            'מחיקת חשבון',
+            'האם אתה בטוח שברצונך למחוק את החשבון? כל הנתונים יימחקו לצמיתות ופעולה זו בלתי הפיכה.',
+            [
+                { text: 'ביטול', style: 'cancel' },
+                {
+                    text: 'מחק חשבון',
+                    style: 'destructive',
+                    onPress: () => {
+                        Alert.alert(
+                            'אישור סופי',
+                            'לאחר המחיקה לא ניתן לשחזר את החשבון. להמשיך?',
+                            [
+                                { text: 'לא', style: 'cancel' },
+                                {
+                                    text: 'כן, מחק את החשבון שלי',
+                                    style: 'destructive',
+                                    onPress: async () => {
+                                        try {
+                                            await deleteAccount();
+                                            // Auth state will change and app will redirect to login
+                                        } catch (e: any) {
+                                            Alert.alert('שגיאה', e?.message || 'מחיקת החשבון נכשלה. נסה שוב.');
+                                        }
+                                    },
+                                },
+                            ]
+                        );
+                    },
+                },
+            ]
+        );
+    };
+
+    const toggleActivityCreation = async (value: boolean) => {
+        setActivityCreationOpenToAll(value);
+        setSavingPermissions(true);
+
+        try {
+            await firebaseService.updateAppSettings({ activityCreationOpenToAll: value });
+        } catch (error) {
+            console.error('Failed to update app settings:', error);
+            setActivityCreationOpenToAll(!value);
+            Alert.alert('שגיאה', 'לא הצלחנו לעדכן את הרשאות הפרסום.');
+        } finally {
+            setSavingPermissions(false);
+        }
+    };
+
     const radiusOptions = [
         { label: '5 ק״מ', value: 5 },
         { label: '10 ק״מ', value: 10 },
@@ -98,6 +179,41 @@ export default function SettingsScreen() {
                         </View>
                     </View>
                 </View>
+
+                {currentUser?.role === 'admin' && (
+                    <>
+                        <View style={styles.sectionHeader}>
+                            <Text style={[styles.sectionTitle, { color: colors.text }]}>הרשאות פרסום</Text>
+                        </View>
+                        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                            <View style={styles.row}>
+                                <View style={styles.rowLeft}>
+                                    {loadingPermissions || savingPermissions ? (
+                                        <ActivityIndicator color={colors.primary} />
+                                    ) : (
+                                        <Switch
+                                            value={activityCreationOpenToAll}
+                                            onValueChange={toggleActivityCreation}
+                                            trackColor={{ false: colors.border, true: colors.primary }}
+                                            thumbColor="#fff"
+                                        />
+                                    )}
+                                </View>
+                                <View style={styles.rowRight}>
+                                    <View style={[styles.iconContainer, { backgroundColor: colors.error + '15' }]}>
+                                        <ShieldAlert size={20} color={colors.error} />
+                                    </View>
+                                    <View>
+                                        <Text style={[styles.rowTitle, { color: colors.text }]}>לאפשר לכולם לפרסם</Text>
+                                        <Text style={[styles.rowSubtitle, { color: colors.tabIconDefault }]}>
+                                            כשהמתג פעיל גם משתמשים רגילים יוכלו לפתוח פעילות חדשה.
+                                        </Text>
+                                    </View>
+                                </View>
+                            </View>
+                        </View>
+                    </>
+                )}
 
                 {notificationPreferences.enabled && (
                     <>
@@ -283,6 +399,25 @@ export default function SettingsScreen() {
                         </View>
                     </>
                 )}
+
+                <View style={[styles.sectionHeader, { marginTop: 32 }]}>
+                    <Text style={[styles.sectionTitle, { color: colors.text }]}>מחיקת חשבון</Text>
+                </View>
+                <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <TouchableOpacity
+                        style={[styles.row, styles.deleteAccountRow]}
+                        onPress={handleDeleteAccount}
+                        activeOpacity={0.7}
+                    >
+                        <View style={[styles.iconContainer, { backgroundColor: (colors.error || '#dc2626') + '20' }]}>
+                            <Trash2 size={20} color={colors.error || '#dc2626'} />
+                        </View>
+                        <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                            <Text style={[styles.deleteAccountTitle, { color: colors.error || '#dc2626' }]}>מחק את החשבון שלי</Text>
+                            <Text style={[styles.rowSubtitle, { color: colors.tabIconDefault }]}>מחיקה לצמיתות של כל הנתונים. פעולה בלתי הפיכה.</Text>
+                        </View>
+                    </TouchableOpacity>
+                </View>
             </ScrollView>
         </View>
     );
@@ -432,5 +567,13 @@ const styles = StyleSheet.create({
     testButtonText: {
         fontSize: 16,
         fontWeight: '800',
+    },
+    deleteAccountRow: {
+        flexDirection: 'row-reverse',
+    },
+    deleteAccountTitle: {
+        fontSize: 17,
+        fontWeight: '700',
+        textAlign: 'right',
     },
 });

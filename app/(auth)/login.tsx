@@ -2,6 +2,7 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { androidButtonFix, androidTextFix, createShadow, preventFontScaling } from '@/constants/AndroidStyles';
 import Colors from '@/constants/Colors';
 import { useApp } from '@/context/AppContext';
+import { firebaseService } from '@/services/firebaseService';
 import { useRouter } from 'expo-router';
 import { Lock, LogIn, Phone } from 'lucide-react-native';
 import React, { useState } from 'react';
@@ -26,7 +27,7 @@ export default function LoginScreen() {
         }
         try {
             await login(trimmedInput, trimmedPassword);
-                // Wait a bit for auth state to update, then navigate
+            // Wait a bit for auth state to update, then navigate
             setTimeout(() => {
                 router.replace('/(tabs)');
             }, 500);
@@ -34,6 +35,26 @@ export default function LoginScreen() {
             console.error('Login error:', error);
             const errorMessage = error?.message || 'שם משתמש או סיסמה שגויים. נסה שוב.';
             alert(errorMessage);
+        }
+    };
+
+    const handleForgotPassword = async () => {
+        const value = phoneOrEmail.trim();
+        if (!value) {
+            alert('הזן קודם אימייל או מספר טלפון כדי שנוכל לאפס סיסמה');
+            return;
+        }
+
+        try {
+            const resetMode = await firebaseService.requestPasswordReset(value);
+            if (resetMode === 'email') {
+                alert('קישור לאיפוס סיסמה נשלח לאימייל שהוזן.');
+            } else {
+                alert('בקשת איפוס סיסמה נשלחה למנהל המערכת. נחזור אליך בהקדם.');
+            }
+        } catch (error: any) {
+            console.error('Forgot password error:', error);
+            alert(error?.message || 'לא הצלחנו לשלוח בקשת איפוס סיסמה.');
         }
     };
 
@@ -77,6 +98,10 @@ export default function LoginScreen() {
                         />
                     </View>
 
+                    <TouchableOpacity style={styles.forgotPasswordLink} onPress={handleForgotPassword}>
+                        <Text style={[styles.forgotPasswordText, { color: colors.primary }]}>שכחתי סיסמה</Text>
+                    </TouchableOpacity>
+
                     <TouchableOpacity
                         style={[styles.loginButton, { backgroundColor: colors.primary }]}
                         onPress={handleLogin}
@@ -94,6 +119,16 @@ export default function LoginScreen() {
                     </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
+
+            <View style={styles.footer}>
+                <TouchableOpacity onPress={() => router.push('/terms')}>
+                    <Text style={[styles.footerText, { color: colors.tabIconDefault }]}>תנאי שימוש</Text>
+                </TouchableOpacity>
+                <Text style={[styles.footerText, { color: colors.tabIconDefault }]}> | </Text>
+                <TouchableOpacity onPress={() => router.push('/privacy')}>
+                    <Text style={[styles.footerText, { color: colors.tabIconDefault }]}>מדיניות פרטיות</Text>
+                </TouchableOpacity>
+            </View>
         </SafeAreaView>
     );
 }
@@ -144,6 +179,16 @@ const styles = StyleSheet.create({
         ...androidTextFix,
         ...preventFontScaling,
     },
+    forgotPasswordLink: {
+        alignSelf: 'flex-start',
+        marginBottom: 10,
+    },
+    forgotPasswordText: {
+        fontSize: 14,
+        fontWeight: '700',
+        ...androidTextFix,
+        ...preventFontScaling,
+    },
     loginButton: {
         flexDirection: 'row-reverse',
         height: 55,
@@ -175,6 +220,17 @@ const styles = StyleSheet.create({
     registerLinkText: {
         fontSize: 14,
         fontWeight: 'bold',
+        ...androidTextFix,
+        ...preventFontScaling,
+    },
+    footer: {
+        flexDirection: 'row-reverse',
+        justifyContent: 'center',
+        marginTop: 20,
+        marginBottom: 20,
+    },
+    footerText: {
+        fontSize: 12,
         ...androidTextFix,
         ...preventFontScaling,
     },

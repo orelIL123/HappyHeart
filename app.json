@@ -2,12 +2,12 @@
   "expo": {
     "name": "שמחת הלב",
     "slug": "happyHart",
-    "version": "1",
+    "version": "3.1.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "happyheart",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
@@ -15,16 +15,20 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "3",
+      "buildNumber": "17",
+      "jsEngine": "jsc",
+      "newArchEnabled": false,
       "bundleIdentifier": "com.happyheart.app",
       "googleServicesFile": "./GoogleService-Info-14.plist",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "האפליקציה משתמשת בגלריה כדי לאפשר לך להעלות תמונת פרופיל ולצרף תמונות לפעילויות בתוך האפליקציה.",
+        "NSCameraUsageDescription": "האפליקציה משתמשת במצלמה כדי לאפשר לך לצלם תמונת פרופיל או תמונות לפעילויות בתוך האפליקציה."
       }
     },
     "android": {
       "package": "com.happyhart.app",
-      "versionCode": 2,
+      "versionCode": 12,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
@@ -48,11 +52,11 @@
     "updates": {
       "url": "https://u.expo.dev/eeb4b519-a71e-4542-ba20-6b33c3e1600f",
       "fallbackToCacheTimeout": 0,
-      "checkAutomatically": "ON_LOAD",
+      "checkAutomatically": "NEVER",
       "requestHeaders": {},
-      "enabled": true
+      "enabled": false
     },
-    "runtimeVersion": "1",
+    "runtimeVersion": "3.1.1",
     "web": {
       "bundler": "metro",
       "output": "static",
@@ -60,8 +64,7 @@
     },
     "plugins": [
       "expo-router",
-      "expo-updates",
-      "expo-dev-client"
+      "expo-updates"
     ],
     "experiments": {
       "typedRoutes": true

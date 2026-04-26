@@ -1,11 +1,9 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Updates from 'expo-updates';
 import { useEffect, useState } from 'react';
-import { Alert, Platform } from 'react-native';
-import 'react-native-reanimated';
+import { ActivityIndicator, Alert, Platform, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { NotificationCenter } from '@/components/NotificationCenter';
@@ -15,8 +13,8 @@ import MyColors from '@/constants/Colors';
 import { AppProvider, useApp } from '@/context/AppContext';
 
 export {
-    // Catch any errors thrown by the Layout component.
-    ErrorBoundary
+  // Catch any errors thrown by the Layout component.
+  ErrorBoundary
 } from 'expo-router';
 
 export const unstable_settings = {
@@ -28,18 +26,13 @@ export const unstable_settings = {
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    // You can add custom fonts here if needed
-  });
-
-  useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+  // Skip useFonts when no custom fonts - avoids expo-font native module crash on iOS launch
+  const fontsReady = true;
 
   return (
     <SafeAreaProvider>
       <AppProvider>
-        <RootLayoutNav loaded={loaded} />
+        <RootLayoutNav loaded={fontsReady} />
       </AppProvider>
     </SafeAreaProvider>
   );
@@ -78,68 +71,50 @@ function RootLayoutNav({ loaded }: { loaded: boolean }) {
     return () => clearTimeout(timeout);
   }, []);
 
-  // Check for updates - Aggressive polling for fast updates
+  // Check for updates - deferred to avoid triggering ErrorRecovery crash on iOS startup
   useEffect(() => {
     async function checkForUpdates() {
-      if (__DEV__ || !Updates.isEnabled) {
-        console.log('Updates: Skipping check in dev mode or updates not enabled');
-        setUpdateChecked(true);
-        return;
-      }
-
       try {
-        console.log('Updates: Checking for updates...');
+        if (__DEV__ || !Updates.isEnabled) {
+          setUpdateChecked(true);
+          return;
+        }
         const update = await Updates.checkForUpdateAsync();
-
         if (update.isAvailable) {
-          console.log('Updates: Update available! Auto-downloading...');
           try {
             await Updates.fetchUpdateAsync();
-            console.log('Updates: Update downloaded! Reloading app...');
-            // Automatically reload without asking on Android for faster updates
             if (Platform.OS === 'android') {
-              setTimeout(() => {
-                Updates.reloadAsync();
-              }, 500);
+              setTimeout(() => Updates.reloadAsync(), 500);
             } else {
               Alert.alert(
                 'עדכון הותקן!',
                 'האפליקציה תתחיל מחדש כדי להחיל את העדכון.',
-                [
-                  {
-                    text: 'אישור',
-                    onPress: () => {
-                      Updates.reloadAsync();
-                    },
-                  },
-                ]
+                [{ text: 'אישור', onPress: () => Updates.reloadAsync() }]
               );
             }
-          } catch (error) {
-            console.error('Updates: Error fetching update:', error);
+          } catch {
             setUpdateChecked(true);
           }
         } else {
-          console.log('Updates: No update available');
           setUpdateChecked(true);
         }
-      } catch (error) {
-        console.error('Updates: Error checking for updates:', error);
+      } catch {
         setUpdateChecked(true);
       }
     }
 
-    if (loaded && !isLoadingSession) {
-      // Check immediately on load
+    if (!loaded || isLoadingSession || Platform.OS === 'ios') return;
+
+    // Keep background update checks off on iOS until the launch crash issue is fully gone.
+    const t = setTimeout(() => {
       checkForUpdates();
+    }, 3000);
 
-      // Also check every 30 seconds for new updates (aggressive polling)
-      const interval = setInterval(() => {
-        checkForUpdates();
-      }, 30000);
-
-      return () => clearInterval(interval);
-    }
+    const interval = setInterval(checkForUpdates, 30000);
+    return () => {
+      clearTimeout(t);
+      clearInterval(interval);
+    };
   }, [loaded, isLoadingSession]);
 
   // Handle navigation based on auth state
@@ -152,10 +127,10 @@ function RootLayoutNav({ loaded }: { loaded: boolean }) {
     const inAuthGroup = segments[0] === '(auth)';
     const shouldShowAuth = !isAuthenticated;
 
-    // Allow access to admin-cleanup without authentication
+    // Allow access to admin-cleanup, privacy and terms without authentication
     const currentPath = segments.join('/');
-    if (currentPath === 'admin-cleanup' || currentPath === 'migrate-users') {
-      console.log('Navigation Effect - Allowing access to admin tool');
+    if (currentPath === 'admin-cleanup' || currentPath === 'migrate-users' || currentPath === 'privacy' || currentPath === 'terms') {
+      console.log('Navigation Effect - Allowing access to public tool/page');
       return;
     }
 
@@ -170,11 +145,52 @@ function RootLayoutNav({ loaded }: { loaded: boolean }) {
     }
   }, [isAuthenticated, isLoadingSession, loaded, segments, currentUser, router]);
 
-  if (!loaded || isLoadingSession) {
+  if (!loaded) {
     return null;
   }
 
-  const customTheme = {
+  if (isLoadingSession) {
+    const colors = MyColors[colorScheme ?? 'light'];
+
+    return (
+      <ThemeProvider value={customTheme(theme, colorScheme)}>
+        <View style={{
+          flex: 1,
+          backgroundColor: colors.background,
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: 24,
+        }}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={{
+            color: colors.text,
+            fontSize: 17,
+            fontWeight: '600',
+            marginTop: 16,
+            textAlign: 'center',
+          }}>
+            טוען את האפליקציה...
+          </Text>
+        </View>
+      </ThemeProvider>
+    );
+  }
+
+  return (
+    <ThemeProvider value={customTheme(theme, colorScheme)}>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
+        <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
+        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+      </Stack>
+      <Sidebar />
+      <NotificationCenter />
+    </ThemeProvider>
+  );
+}
+
+function customTheme(theme: typeof DefaultTheme | typeof DarkTheme, colorScheme: 'light' | 'dark' | null | undefined) {
+  return {
     ...theme,
     colors: {
       ...theme.colors,
@@ -185,16 +201,4 @@ function RootLayoutNav({ loaded }: { loaded: boolean }) {
       border: MyColors[colorScheme ?? 'light'].border,
     }
   };
-
-  return (
-    <ThemeProvider value={customTheme}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
-        <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      </Stack>
-      <Sidebar />
-      <NotificationCenter />
-    </ThemeProvider>
-  );
 }

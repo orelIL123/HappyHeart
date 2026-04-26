@@ -68,7 +68,7 @@ export default function AdminCleanupScreen() {
                     email: testEmail,
                     preferredArea: 'תל אביב',
                     role: 'admin',
-                    avatar: 'https://i.pravatar.cc/150?u=oral',
+                    avatar: '',
                     approvalStatus: 'approved',
                     authUid: authUser.uid,
                     createdAt: new Date().toISOString()
